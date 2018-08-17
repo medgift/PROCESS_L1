@@ -7,7 +7,7 @@ center_3
 center_2
 center_4
 
-* NOTE: The files are too big to be uploaded on BitBucket. To run the code you should download the bigTIFF from here: https://camelyon17.grand-challenge.org/data/ and collocate them in the respective folders. 
+* NOTE: The files are too big to be uploaded. To run the code you should download the bigTIFF from here: https://camelyon17.grand-challenge.org/data/ and collocate them in the respective folders. 
 
 lesion_annotations contains the XML files with the annotations of the WSIs.
 
