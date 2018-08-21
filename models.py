@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import os
 from image import *
 from normalizers import *
-import horovod.keras as hvd
+#import horovod.keras as hvd
 from keras.callbacks import Callback
 from keras.callbacks import CSVLogger
 
@@ -25,13 +25,13 @@ class SGDLearningRateTracker(Callback):
         optimizer = self.model.optimizer
         lr = K.eval(optimizer.lr * (1. / (1. + tf.cast(optimizer.decay, tf.float32) * tf.cast(optimizer.iterations, tf.float32))))
         logs['lr'] = lr
-        print ('\n LR:  {:.6f}\n'.format(lr))
+        print('\n LR:  {:.6f}\n'.format(lr))
 
 
 ### TO DO: Change num_classes to 1 and categorical_crossentropy to binary_crossentropy
 def getModel(net_settings, num_classes=1):
     '''
-		Should be modified with model type as input and returns the desired model
+    Should be modified with model type as input and returns the desired model
     '''
     if net_settings['model_type'] == 'resnet':
         base_model = resnet50.ResNet50(include_top=True, weights='imagenet')
@@ -39,45 +39,46 @@ def getModel(net_settings, num_classes=1):
         model = Model(input=base_model.input, output=finetuning)
 
         ## Adjust learning rate based on number of GPUs
-        hv_lr = net_settings['lr'] * hvd.size()
-        opt = optimizers.SGD(lr = hv_lr,  momentum=0.9, decay=1e-6, nesterov=True)
+        #hv_lr = net_settings['lr'] * hvd.size()
+        #opt = optimizers.SGD(lr = hv_lr,  momentum=0.9, decay=1e-6, nesterov=True)
         ## Adding Horovod DistributedOptimizer
-        opt = hvd.DistributedOptimizer(opt)
-
+        #opt = hvd.DistributedOptimizer(opt)
+        opt = optimizers.SGD(lr = 1e-4,  momentum=0.9, decay=1e-6, nesterov=True)
         model.compile(loss=net_settings['loss'],
-    			optimizer= opt, metrics=['accuracy'])
-        callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
-        if hvd.rank() == 0:
-            callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
-    	return model
+        optimizer= opt, metrics=['accuracy'])
+        #callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
+        #if hvd.rank() == 0:
+        #    callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
+        return model
     elif net_settings['model_type'] == 'resnet101':
-	model = resnet101_model(224, 224, 3, 1)
+        model = resnet101_model(224, 224, 3, 1)
         ## Adjust learning rate based on number of GPUs
-        hv_lr = net_settings['lr'] * hvd.size()
+        #hv_lr = net_settings['lr'] * hvd.size()
+        hv_lr = net_settings['lr']
         opt = optimizers.SGD(lr = hv_lr,  momentum=0.9, decay=1e-6, nesterov=True)
         ## Adding Horovod DistributedOptimizer
-        opt = hvd.DistributedOptimizer(opt)
+        #opt = hvd.DistributedOptimizer(opt)
 
         model.compile(loss=net_settings['loss'],
-    			optimizer= opt,  
-    			metrics=['accuracy'])
-        callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
-        if hvd.rank() == 0:
-            callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
-	    return model
+                      optimizer= opt,  
+                      metrics=['accuracy'])
+        #callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
+        #if hvd.rank() == 0:
+        #    callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
+        return model
     else:
-	print '[models] Ugggh. Not ready for this yet.'
-	exit(0)
-	return None
+        print('[models] Ugggh. Not ready for this yet.')
+        exit(0)
+        return None
 
 def standardPreprocess(data):
 
-	print '[models] Appling some standard preprocessing to the data. '
-	preprocessedData = np.asarray([resnet50.preprocess_input(x) for x in data])
-	print '[models] data mean: ', np.mean(preprocessedData)
-	print '[models] data std: ', np.std(preprocessedData)
+    print('[models] Appling some standard preprocessing to the data. ')
+    preprocessedData = np.asarray([resnet50.preprocess_input(x) for x in data])
+    print('[models] data mean: ', np.mean(preprocessedData))
+    print('[models] data std: ', np.std(preprocessedData))
 
-	return preprocessedData
+    return preprocessedData
 
 def get_normalizer(patch):
     normalizer = ReinhardNormalizer()
@@ -205,7 +206,7 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
         plt.savefig(os.path.join(save_history_path,'trainingLoss.png'))
         plt.close()
 
-	# Plotting info about training loss
+        # Plotting info about training loss
         plt.plot(history.history['loss'])
         plt.title('Model Loss')
         plt.ylabel('loss')
@@ -216,7 +217,7 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
         plt.close()
 
         model.save_weights('model.h5')
-        print 'Model saved to disk'
+        print('Model saved to disk')
 
     return history
 

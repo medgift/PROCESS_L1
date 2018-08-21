@@ -102,16 +102,16 @@ def get_mask_from_opencv_contours(l_contours,slide,level) :
     """
     slid_lev_w, slid_lev_h = slide.level_dimensions[level]
     mask_image = np.zeros((slid_lev_h,slid_lev_w))
-    print "mask_image dimension : ", mask_image.shape
+    print("mask_image dimension : ", mask_image.shape)
     downsample = slide.level_downsamples[level]
-    print "downsample: {0}".format(downsample)
+    print("downsample: {0}".format(downsample))
     #convert coordinate to the level resolution from level=0
     for i,npary in enumerate(l_contours):
-        print "tummor number : {0}".format(i)
+        print("tummor number : {0}".format(i))
         #check 1 in the tummor region
         li_xy = npary.flatten()
         import pdb; pdb.set_trace()
         d_x, d_y = li_xy[::2],li_xy[1::2]
         mask_image[d_x,d_y] = 255.0
-        print "put {0} tummor".format(i)
+        print("put {0} tummor".format(i))
     return mask_image

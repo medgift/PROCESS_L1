@@ -71,7 +71,7 @@ def threshold_otsu(image, nbins=256):
 
     image = np.asarray([x for x in image.ravel() if x != 255])
     image = np.asarray([x for x in image.ravel() if x != 0])
-    print image.ravel()
+    print(image.ravel())
 
     hist, bin_centers = histogram(image.ravel(), nbins)
     hist = hist.astype(float)
@@ -174,9 +174,9 @@ def otsu_thresholding(im_float):
         return otsued image with gray, otsu threshold value
     """
 
-    #print("threshold_otsu\n")
+    #print("threshold_otsu\n"))
     idx = im_float != 255
-    #print np.shape(im_float)
+    #print(np.shape(im_float))
     new=np.zeros(np.shape(im_float))
     new += 200
     #new=np.zeros(np.shape(rgb_im))
@@ -196,7 +196,7 @@ def otsu_thresholding(im_float):
     #thresholding
     im_bool= (im_float > threshold_global_Otsu)
     im_int = im_bool.astype(float) + black_mask #removes also total black parts
-    #print im_int*255
+    #print(im_int*255)
     return im_int*255, threshold_global_Otsu
 
 def center_of_slide_level(slide,level):
@@ -238,11 +238,11 @@ def connected_component_image(otsu_image,component_num):
     max_label = np.max(image_labels)
     cnt_label = []
 
-    print "before change componont num : {0}".format(component_num)
+    print("before change componont num : {0}".format(component_num))
     #component number check ( shold compoenet number < maximum component of image )
     if component_num > max_label :
         component_num = max_label
-    print "after change component num : {0}".format(component_num)
+    print("after change component num : {0}".format(component_num))
 
     for i in range(1,max_label+1):
         temp = (image_labels == i)

@@ -1,4 +1,3 @@
-import ConfigParser
 import io
 import os
 from os import listdir
@@ -14,6 +13,10 @@ from util import otsu_thresholding
 import logging as llg
 import datetime
 import h5py as hd
+try:
+    import configparser as ConfigParser
+except ImportError:
+    import ConfigParser
 
 def parseOptionsFromLog(folder, logfile):
     settings = {}
@@ -48,7 +51,7 @@ def get_data_val(data_class, centres, db, db16, dblist, rand_patient):
                 else:
                     cam16_idx.append(d)
     
-    print '[debug][get_data_val] Selected patient index for val: ', rand_patient
+    print('[debug][get_data_val] Selected patient index for val: ', rand_patient)
     val_idx = pat_idx[rand_patient::10]
     pat_idx = [x for x in pat_idx if x not in val_idx] 
     for n in pat_idx:
@@ -96,10 +99,10 @@ def get_dataset_val_split(centres, db, db16, dblist):
     y_tr = np.concatenate([np.zeros((len(nor_patches),1)),np.ones((len(tum_patches),1))]).T[0]
     x_val = np.concatenate([val_nor_patches, val_tum_patches])
     y_val = np.concatenate([np.zeros((len(val_nor_patches),1)),np.ones((len(val_tum_patches),1))]).T[0]
-    print '[debug][functions][get_dataset_val_split] training data shape: ', np.shape(x_tr), np.shape(y_tr)
-    print '[debug][functions][get_dataset_val_split] validation data shape: ', np.shape(x_val), np.shape(y_val)
-    print '[debug][functions][get_dataset_val_split] trining class balance: ', len(nor_patches), len(tum_patches)
-    print '[debug][functions][get_dataset_val_split] val class balance: ', len(val_nor_patches), len(val_tum_patches)
+    print('[debug][functions][get_dataset_val_split] training data shape: ', np.shape(x_tr), np.shape(y_tr))
+    print('[debug][functions][get_dataset_val_split] validation data shape: ', np.shape(x_val), np.shape(y_val))
+    print('[debug][functions][get_dataset_val_split] trining class balance: ', len(nor_patches), len(tum_patches))
+    print('[debug][functions][get_dataset_val_split] val class balance: ', len(val_nor_patches), len(val_tum_patches))
     return x_tr, y_tr, x_val, y_val
 
 def get_dataset(centres, db, dblist):
@@ -114,7 +117,7 @@ def get_dataset(centres, db, dblist):
     tum_pat_idx, tum_patches = get_data('tumor', centres, db, dblist)
     x = np.concatenate([nor_patches, tum_patches])
     y = np.concatenate([np.zeros((len(nor_patches),1)),np.ones((len(tum_patches),1))]).T[0]
-    print '[debug][functions][get_dataset] loaded data shape: ', np.shape(x), np.shape(y)
+    print('[debug][functions][get_dataset] loaded data shape: ', np.shape(x), np.shape(y))
     return x, y
 
 
@@ -132,9 +135,9 @@ def shuffle_data(x, y):
     for i in indexes:
         x_shuffled[counter] = x[i]
         counter += 1
-    print 'Checking the shuffle: '
-    print np.sum(x_shuffled[0]-x[indexes[0]])
-    print y_shuffled[0] - y[indexes[0]]
+    print('Checking the shuffle: ')
+    print(np.sum(x_shuffled[0]-x[indexes[0]]))
+    print(y_shuffled[0] - y[indexes[0]])
     return x_shuffled, y_shuffled
 
 def setDBHierarchy(h5db, settings, info):
@@ -203,12 +206,13 @@ def load_slide(slide_path, slide_level=6, verbose = 0):
         rgb_img, [Numpy array] loaded image
         slide, [OpenSlide object] slide
     '''
+    import pdb; pdb.set_trace()
     slide = OpenSlide(slide_path)
     rgba_im = slide.read_region((0,0),slide_level,slide.level_dimensions[slide_level])
     rgba_im= np.array(rgba_im)
     rgb_im = cv2.cvtColor(rgba_im,cv2.COLOR_RGBA2RGB)
     if verbose:
-        print 'Loading: ', slide_path
+        print('Loading: ', slide_path)
         plt.imshow(rgb_im)
     return rgb_im, slide
 
@@ -220,7 +224,7 @@ def gray2otsu(gray_im, verbose = 1):
     ''' Otsu thresholding '''
     otsu_im, o_th = otsu_thresholding(gray_im)
     if verbose:
-        print 'Otsu threshold: ', o_th
+        print('Otsu threshold: ', o_th)
     return otsu_im
 
 def otsu2morph(otsu_im, verbose = 0):
@@ -282,7 +286,7 @@ def preprocess(slide_path,  xml_path, slide_level = 7, patch_size = 224, verbose
         mask, [Numpy array of 0 and 1s] tumor annotation mask
         rgb_img, [Numpy array] loaded image
     '''
-    print'[functions][data_preprocessing] NEW PREPROCESS FUNCTION'
+    print('[functions][data_preprocessing] NEW PREPROCESS FUNCTION')
     rgb_im, slide = load_slide(slide_path, slide_level=slide_level)
 
     tumor_contours = get_opencv_contours_from_xml(xml_path,slide.level_downsamples[slide_level])
@@ -300,7 +304,7 @@ def check_data(centre, source_fld, xml_path):
     pwd = source_fld + str(centre) + '/'
     WSI_file = xml_path[:-3]+'tif'
 
-    print 'Workin with: ', WSI_file
+    print('Workin with: ', WSI_file)
     slide_path = join(pwd,WSI_file)
     return slide_path, None
 
@@ -308,7 +312,7 @@ def check_data(centre, source_fld, xml_path):
 def get_WSI_path(centre, source_fld, xml_file):
     WSI_file = xml_file[:-3]+'tif'
 
-    print 'Workin with: ', WSI_file
+    print('Workin with: ', WSI_file)
     slide_path = join(source_fld+str(centre),WSI_file)
     return slide_path
 

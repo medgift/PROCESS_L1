@@ -35,7 +35,7 @@ import time
 import logging
 import h5py as hd
 import shutil
-import horovod.keras as hvd
+#import horovod.keras as hvd
 import math
 from datasets import Dataset
 
@@ -43,24 +43,24 @@ from datasets import Dataset
 # PART 1: System INIT
 
 np.random.seed(int(sys.argv[4]))
-print 'Setting random seed ', sys.argv[4]
+print('Setting random seed ', sys.argv[4])
 tf.set_random_seed(int(sys.argv[4]))
-print '[parallel][train] Initialising Horovod...'
+print('[parallel][train] Initialising Horovod...')
 # init horovod
-hvd.init()
+#hvd.init()
 # Horovod: pin GPU to be used to process local rank (one GPU per process)
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-config.gpu_options.visible_device_list = str(hvd.local_rank())
+#config.gpu_options.visible_device_list = str(hvd.local_rank())
 K.set_session(tf.Session(config=config))
 
 
-cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
+cam16fld='./data/camelyon16/'
 cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
 
 ''' Loading system configurations '''
 CONFIG_FILE = 'config.cfg'
-print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
+print('[cnn][config] Loading system configurations from: ', CONFIG_FILE)
 
 ''' Selecting the GPU device for training '''
 #GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
@@ -70,7 +70,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]= GPU_DEVICE
 ''' Selection of COLOR or GREYSCALE'''
 COLOR = True
 
-print '[cnn][config] Using GPU no. ', GPU_DEVICE
+print('[cnn][config] Using GPU no. ', GPU_DEVICE)
 
 ''' Creating a log file for the run
 For each run the script creates a saving folder with the following namesystem:
@@ -121,7 +121,7 @@ if load_db :
     settings = parseOptionsFromLog('0102-1835', 'INFO.log') # to implement
 
     load_settings = parseLoadOptions(CONFIG_FILE)
-    print '[cnn][config] Loading data config: ', load_settings
+    print('[cnn][config] Loading data config: ', load_settings)
 
     PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
     h5file = load_settings['h5file'] #'0109-1415/patches.hdf5'
@@ -153,7 +153,7 @@ if load_db :
     #        dblist_cam16.append(name)
     h5db.visititems(list_entries)
     cam16.visititems(list_entries)
-    print '[debug][cnn] dblist: ', dblist
+    print('[debug][cnn] dblist: ', dblist)
 
 else:
     ''' PATCH EXTRACTION MODULE
@@ -179,32 +179,30 @@ else:
     h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
 
     camelyon17 = Dataset(name='camelyon17',
-                         slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
-                         xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
+                         slide_source_fld='/home/jamal/Code/ECP/CANDLE/Benchmarks/examples/PROCESS_UC1/data/camelyon17/',
+                         xml_source_fld='/home/jamal/Code/ECP/CANDLE/Benchmarks/examples/PROCESS_UC1/data/camelyon17/lesion_annotations',
                          centres = settings['training_centres'],
                          settings=settings
                         )
+    import pdb; pdb.set_trace()
+    camelyon17.extract_patches(h5db, new_folder)
 
-    #camelyon17.extract_patches(h5db, new_folder)
+    #camelyon16 = Dataset(name='camelyon16',
+                         #slide_source_fld=cam16fld,
+                         #xml_source_fld=cam16xmls,
+                         #settings=settings
+                        #)
+    #camelyon16.settings['slide_level']=7
+    #camelyon16.settings['training_centres']=0
+    #camelyon16.settings['xml_source_fld']=cam16xmls
+    #camelyon16.settings['source_fld']=cam16fld
+    #camelyon16.settings['n_samples']=200
 
-    camelyon16 = Dataset(name='camelyon16',
-                         slide_source_fld=cam16fld,
-                         xml_source_fld=cam16xmls,
-                         settings=settings
-                        )
-    camelyon16.settings['slide_level']=7
-    camelyon16.settings['training_centres']=0
-    camelyon16.settings['xml_source_fld']=cam16xmls
-    camelyon16.settings['source_fld']=cam16fld
-    camelyon16.settings['n_samples']=200
-
-    camelyon16.extract_patches(h5db, new_folder)
+    #camelyon16.extract_patches(h5db, new_folder)
 
     # Monitoring running time
     patch_extraction_elapsed = time.time()-start_time
-    tot_patches = camelyon16.tum_counter + \
-                  camelyon16.nor_counter + \
-                  camelyon17.tum_counter + \
+    tot_patches = camelyon17.tum_counter + \
                   camelyon17.nor_counter
     time_per_patch = patch_extraction_elapsed / tot_patches
     wlog('ElapsedTime for Patch Extraction: ', patch_extraction_elapsed)
@@ -212,7 +210,7 @@ else:
 
     h5db.close()
 
-print '[cnn] [patch_extraction = FINISHED] DB saved'
+print('[cnn] [patch_extraction = FINISHED] DB saved')
     #exit(0)
 
 if training:
@@ -225,10 +223,10 @@ if training:
     '''
 
 
-    print '[cnn][train] Training Network...'
+    print('[cnn][train] Training Network...')
     net_settings = parseTrainingOptions(CONFIG_FILE)
     # Adjust number of epochs based on number of GPUs
-    net_settings['epochs'] = int(math.ceil(float(net_settings['epochs'])/ hvd.size()))
+    #net_settings['epochs'] = int(math.ceil(float(net_settings['epochs'])/ hvd.size()))
 
     wlog('Network settings', net_settings)
 
@@ -241,16 +239,16 @@ if training:
     # wouldn't necessarily mean that you are learning the right thing.
     settings['split']='validate'
 
-    print '[cnn][train] Data split config: ', settings['split']
+    print('[cnn][train] Data split config: ', settings['split'])
     wlog('[cnn][train] Data split config: ', settings['split'])
 
     settings['color']=COLOR
 
     if settings['color']:
-        print '[cnn][train] COLOR patches'
+        print('[cnn][train] COLOR patches')
         wlog('[cnn][train] COLOR patches', '')
     else:
-        print '[cnn][train] GREYSCALE patches'
+        print('[cnn][train] GREYSCALE patches')
         wlog('[cnn][train] GREYSCALE patches', '')
 
     if settings['split']=='shuffle':
@@ -258,7 +256,7 @@ if training:
         nor_patch_list = shuffle(all_normal_patches)[0]
         train_ix = int(len(tum_patch_list) * 0.8)
 
-        print  '[cnn][train] Number of training tumor patches: ', train_ix
+        print( '[cnn][train] Number of training tumor patches: ', train_ix)
         wlog('[cnn][train] No. training tumor patches: ', train_ix)
 
         train_patches = np.zeros((2*train_ix, patch_size, patch_size, 3))
@@ -281,7 +279,7 @@ if training:
         y_val[:val_ix]=1
 
     elif settings['split']=='sequential':
-        print  '[cnn][train] SEQUENTIAL split '
+        print( '[cnn][train] SEQUENTIAL split ')
         wlog('[cnn][train] SEQUENTIAL split ', '')
 
         if not settings['color']:
@@ -293,7 +291,7 @@ if training:
 
         train_ix = int(len(tum_patch_list) * 0.8)
 
-        print  'Number of training tumor patches: ', train_ix
+        print( 'Number of training tumor patches: ', train_ix)
         wlog('No. training tumor patches: ', train_ix)
 
         train_patches = np.zeros((2*train_ix, patch_size, patch_size, 3))
@@ -332,8 +330,8 @@ if training:
 
     elif settings['split']=='select':
         '''NEW DATA LOAD MODULE ## to merge'''
-        print '[cnn][split = select] Training centres: ', settings['training_centres'][:-1]
-        print '[cnn][split = select] Validation centres: ', settings['training_centres'][-1]
+        print('[cnn][split = select] Training centres: ', settings['training_centres'][:-1])
+        print('[cnn][split = select] Validation centres: ', settings['training_centres'][-1])
         x_train, y_train = get_dataset(settings['training_centres'][:-1], h5db, dblist)
         x_val, y_val = get_dataset(settings['training_centres'][-1], h5db, dblist)
         x_train = x_train[:5]
@@ -344,7 +342,7 @@ if training:
         '''VALIDATION FOR CHALLENGE
            we isolate one random patient from each center to create the validation set
         '''
-        print '[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): '
+        print('[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): ')
         x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, cam16, dblist)
 
 
@@ -371,14 +369,14 @@ if training:
     #  use only for Categorical Crossentropy loss:
     #  encode the Ys as 2 class labels
     if net_settings['loss']=='categorical_crossentropy':
-        print 'Encoding the labels to categorical..'
+        print('Encoding the labels to categorical..')
         Ytrain = to_categorical(Ytrain, 2)
         Yval = to_categorical(Yval, 2)
 
-    print 'Trainig dataset: ', Xtrain.shape
-    print 'Validation dataset: ',Xval.shape
-    print 'Trainig labels: ', Ytrain.shape
-    print 'Validation labels: ', Yval.shape
+    print('Trainig dataset: ', Xtrain.shape)
+    print('Validation dataset: ',Xval.shape)
+    print('Trainig labels: ', Ytrain.shape)
+    print('Validation labels: ', Yval.shape)
     wlog('Training data: ', Xtrain.shape)
     wlog('Validation data: ', Xval.shape)
 

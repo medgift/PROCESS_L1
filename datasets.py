@@ -60,7 +60,7 @@ class Dataset(object):
     def get_wsi_path(self, centre, xml_file):
         #if self.name == 'camelyon17':
         wsi_file = xml_file[:-3]+'tif'
-        print 'Working with: ', wsi_file
+        print('Working with: ', wsi_file)
         
         if self.name == 'camelyon16':
             wsi_file = xml_file[:-9]+'.tif'
@@ -129,7 +129,7 @@ class Dataset(object):
     def extract_patches(self, h5db, new_folder):
         '''
         for centre in self.centres:
-            print '[cnn][patch_extraction] Selected Centre: ', centre
+            print('[cnn][patch_extraction] Selected Centre: ', centre)
             # each centre may have more than one annotation XML file, so here we retrieve
             # a list of all the XMLs related to the current centre
             annotation_list = np.sort(self.get_annotation_list(centre, self.xml_source_fld))
@@ -138,13 +138,13 @@ class Dataset(object):
             for xml_file in annotation_list:
                 files_counter +=1 # variable to shape the final data vector
         '''
-        print '[debug] ', self.name
-        print '[debug] ', self.settings
+        print('[debug] ', self.name)
+        print('[debug] ', self.settings)
 
         self.set_files_counter(self.count_annotation_files())
         
-        print '[dataset] {0} [extract_patches] {1} total annotation files.'.format(self.name,
-                                                                                   self.files_counter)
+        print('[dataset] {0} [extract_patches] {1} total annotation files.'.format(self.name,
+                                                                                   self.files_counter))
         
         for centre in self.centres:
             annotation_list = self.get_annotation_list(centre)
@@ -176,6 +176,7 @@ class Dataset(object):
                         im_contour = rgb_im
                     
                     else:
+                        import pdb; pdb.set_trace()
                         slide, annotations_mask, rgb_im, im_contour = functions.preprocess(
                                                         slide_path,
                                                         xml_path, 
@@ -236,7 +237,7 @@ class Dataset(object):
                     for p_x,p_y in tum_locations:
                         plt.scatter(p_y, p_x, c='r')
                         #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
-                    print '[cnn][patch_extraction] Saving tumor locations image'
+                    print('[cnn][patch_extraction] Saving tumor locations image')
                     plt.savefig(
                         os.path.join(
                         new_folder,'level{}_centre{}_patient{}_node{}_tumor_locations.png'.format(
@@ -245,10 +246,10 @@ class Dataset(object):
                             info['patient'], 
                             info['node'])))
                     plt.close()
-                    #print 'Saving tumor locations image'
+                    #print('Saving tumor locations image')
                     #plt.savefig('tumor_locations_patient0{}_node{}'.format(info['patient'], info['node']))
 
-                    print '[cnn][patch_extraction] Saving annotation mask and normal tissue mask'
+                    print('[cnn][patch_extraction] Saving annotation mask and normal tissue mask')
                     plt.figure()
                     plt.imshow(annotations_mask)
                     plt.savefig(
