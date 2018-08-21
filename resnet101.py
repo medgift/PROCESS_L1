@@ -96,7 +96,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     x = Activation('relu', name='res' + str(stage) + block + '_relu')(x)
     return x
 
-def resnet101_model(img_rows, img_cols, color_type=1, num_classes=None):
+def resnet101_model(net_settings, img_rows, img_cols, color_type=1, num_classes=None):
     """
     Resnet 101 Model for Keras
 
@@ -108,6 +108,7 @@ def resnet101_model(img_rows, img_cols, color_type=1, num_classes=None):
     TensorFlow: https://drive.google.com/file/d/0Byy2AcGyEVxfTmRRVmpGWDczaXM/view?usp=sharing
 
     Parameters:
+      net_settings : dictionary with configuration settings
       img_rows, img_cols - resolution of inputs
       channel - 1 for grayscale, 3 for color
       num_classes - number of class labels for our classification task
@@ -166,7 +167,7 @@ def resnet101_model(img_rows, img_cols, color_type=1, num_classes=None):
     # The method below works since pre-trained weights are stored in layers but not in the model
     x_newfc = AveragePooling2D((7, 7), name='avg_pool')(x)
     x_newfc = Flatten()(x_newfc)
-    x_newfc = Dense(num_classes, activation='sigmoid', name='fc8', kernel_regularizer=keras.regularizers.l2(0.01))(x_newfc)
+    x_newfc = Dense(num_classes, activation=net_settings['activation'], name='fc8', kernel_regularizer=keras.regularizers.l2(0.01))(x_newfc)
 
     model = Model(img_input, x_newfc)
 

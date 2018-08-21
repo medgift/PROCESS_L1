@@ -35,32 +35,34 @@ import time
 import logging
 import h5py as hd
 import shutil
-#import horovod.keras as hvd
+import horovod.keras as hvd
 import math
 from datasets import Dataset
 
 
 # PART 1: System INIT
-
 np.random.seed(int(sys.argv[4]))
 print('Setting random seed ', sys.argv[4])
 tf.set_random_seed(int(sys.argv[4]))
-print('[parallel][train] Initialising Horovod...')
-# init horovod
-#hvd.init()
-# Horovod: pin GPU to be used to process local rank (one GPU per process)
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-#config.gpu_options.visible_device_list = str(hvd.local_rank())
-K.set_session(tf.Session(config=config))
-
-
-cam16fld='./data/camelyon16/'
-cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
 
 ''' Loading system configurations '''
 CONFIG_FILE = 'config.cfg'
 print('[cnn][config] Loading system configurations from: ', CONFIG_FILE)
+settings = parseOptions(CONFIG_FILE)
+
+if settings['multinode']=='True':
+    print('[parallel][train] Initialising Horovod...')
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    init horovod
+    hvd.init()
+    #Horovod: pin GPU to be used to process local rank (one GPU per process)
+    config.gpu_options.visible_device_list = str(hvd.local_rank())
+
+K.set_session(tf.Session(config=config))
+
+cam16fld='./data/camelyon16/'
+cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
 
 ''' Selecting the GPU device for training '''
 #GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
@@ -179,12 +181,12 @@ else:
     h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
 
     camelyon17 = Dataset(name='camelyon17',
-                         slide_source_fld='/home/jamal/Code/ECP/CANDLE/Benchmarks/examples/PROCESS_UC1/data/camelyon17/',
-                         xml_source_fld='/home/jamal/Code/ECP/CANDLE/Benchmarks/examples/PROCESS_UC1/data/camelyon17/lesion_annotations',
+                         slide_source_fld = settings['source_fld'],
+                         xml_source_fld = settings['xml_source_fld'],
                          centres = settings['training_centres'],
-                         settings=settings
+                         settings = settings
                         )
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     camelyon17.extract_patches(h5db, new_folder)
 
     #camelyon16 = Dataset(name='camelyon16',
@@ -202,12 +204,18 @@ else:
 
     # Monitoring running time
     patch_extraction_elapsed = time.time()-start_time
+    '''
+    tot_patches = camelyon16.tum_counter + \
+                  camelyon16.nor_counter   \
+                  camelyon17.tum_counter + \
+                  camelyon17.nor_counter
+    '''
     tot_patches = camelyon17.tum_counter + \
                   camelyon17.nor_counter
     time_per_patch = patch_extraction_elapsed / tot_patches
     wlog('ElapsedTime for Patch Extraction: ', patch_extraction_elapsed)
     wlog('Time per patch: ', time_per_patch)
-
+    
     h5db.close()
 
 print('[cnn] [patch_extraction = FINISHED] DB saved')
@@ -345,9 +353,6 @@ if training:
         print('[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): ')
         x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, cam16, dblist)
 
-
-
-
     '''There you go. here you should have both training data and validation data '''
     '''Maybe shuffling. Cleaning. whiteninig etccccccc'''
 
@@ -380,7 +385,7 @@ if training:
     wlog('Training data: ', Xtrain.shape)
     wlog('Validation data: ', Xval.shape)
 
-    model = getModel(net_settings)
+    model = getModel(net_settings, settings)
 
     #fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
     history = fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)

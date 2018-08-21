@@ -50,10 +50,10 @@ def get_data_val(data_class, centres, db, db16, dblist, rand_patient):
                     pat_idx.append(d)
                 else:
                     cam16_idx.append(d)
-    
+
     print('[debug][get_data_val] Selected patient index for val: ', rand_patient)
     val_idx = pat_idx[rand_patient::10]
-    pat_idx = [x for x in pat_idx if x not in val_idx] 
+    pat_idx = [x for x in pat_idx if x not in val_idx]
     for n in pat_idx:
         if db[n].shape[0]>0:
             train_patches.append(db[n])
@@ -355,7 +355,7 @@ def parseOptions(configFile):
     settings['slide_level'] = int(config.get("settings", "slide_level"))
     settings['patch_size'] = int(config.get("settings", "patch_size"))
     settings['n_samples'] = int(config.get("settings", "n_samples"))
-
+    settings['multinode'] = config.get("settings", "multinode")
     '''Logging the info'''
     wlog('training_centres', settings['training_centres'])
     wlog('source_fld', settings['source_fld'])
@@ -363,6 +363,7 @@ def parseOptions(configFile):
     wlog('slide_level', settings['slide_level'])
     wlog('patch_size', settings['patch_size'])
     wlog('n_samples', settings['n_samples'])
+    wlog('multinode', settings['multinode'])
 
     return settings
 

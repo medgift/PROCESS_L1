@@ -29,7 +29,7 @@ class SGDLearningRateTracker(Callback):
 
 
 ### TO DO: Change num_classes to 1 and categorical_crossentropy to binary_crossentropy
-def getModel(net_settings, num_classes=1):
+def getModel(net_settings, settings, num_classes=1):
     '''
     Should be modified with model type as input and returns the desired model
     '''
@@ -43,28 +43,31 @@ def getModel(net_settings, num_classes=1):
         #opt = optimizers.SGD(lr = hv_lr,  momentum=0.9, decay=1e-6, nesterov=True)
         ## Adding Horovod DistributedOptimizer
         #opt = hvd.DistributedOptimizer(opt)
-        opt = optimizers.SGD(lr = 1e-4,  momentum=0.9, decay=1e-6, nesterov=True)
+        opt = optimizers.SGD(lr = net_settings['lr'],  momentum=net_settings['momentum'], decay=net_settings['decay'], nesterov=net_settings['nesterov'])
         model.compile(loss=net_settings['loss'],
         optimizer= opt, metrics=['accuracy'])
-        #callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
-        #if hvd.rank() == 0:
-        #    callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
+        if settings['multinode']=='True':
+            callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
+            if hvd.rank() == 0:
+                callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
         return model
     elif net_settings['model_type'] == 'resnet101':
-        model = resnet101_model(224, 224, 3, 1)
-        ## Adjust learning rate based on number of GPUs
-        #hv_lr = net_settings['lr'] * hvd.size()
+        model = resnet101_model(net_settings, settings['patch_size'], settings['patch_size'], 3, 1)
         hv_lr = net_settings['lr']
-        opt = optimizers.SGD(lr = hv_lr,  momentum=0.9, decay=1e-6, nesterov=True)
-        ## Adding Horovod DistributedOptimizer
-        #opt = hvd.DistributedOptimizer(opt)
-
+        if settings['multinode']=='True':
+            ## Adjust learning rate based on number of GPUs
+            hv_lr = net_settings['lr'] * hvd.size()
+        opt = optimizers.SGD(lr = hv_lr,  momentum=net_settings['momentum'], decay=net_settings['decay'], nesterov=net_settings['nesterov'])
+        if settings['multinode']=='True':
+            ## Adding Horovod DistributedOptimizer
+            opt = hvd.DistributedOptimizer(opt)
         model.compile(loss=net_settings['loss'],
-                      optimizer= opt,  
+                      optimizer= opt,
                       metrics=['accuracy'])
-        #callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
-        #if hvd.rank() == 0:
-        #    callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
+        if settings['multinode']=='True':
+            callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
+            if hvd.rank() == 0:
+                callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
         return model
     else:
         print('[models] Ugggh. Not ready for this yet.')
