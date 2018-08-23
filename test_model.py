@@ -1,6 +1,6 @@
 import matplotlib
 matplotlib.use('Agg')
-from openslide import OpenSlide
+#from openslide import OpenSlide
 from os import listdir
 from os.path import join, isfile, exists, splitext
 import sys
@@ -26,6 +26,8 @@ slide_path = join(pwd,filename)
 print "file name : "+slide_path+"\n"
 if isfile(slide_path):
     """is it file? """
+    print 'ERR. install openslide'
+    exit(0)
     slide=OpenSlide(slide_path)
 elif exists(slide_path):
     """ dose it exist? """

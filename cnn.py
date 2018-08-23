@@ -54,12 +54,11 @@ if settings['multinode']=='True':
     print('[parallel][train] Initialising Horovod...')
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    init horovod
+    #init horovod
     hvd.init()
     #Horovod: pin GPU to be used to process local rank (one GPU per process)
     config.gpu_options.visible_device_list = str(hvd.local_rank())
-
-K.set_session(tf.Session(config=config))
+    K.set_session(tf.Session(config=config))
 
 cam16fld='./data/camelyon16/'
 cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
@@ -173,7 +172,7 @@ else:
     the current patient and the current node.
 
     '''
-    from openslide import OpenSlide
+    #from openslide import OpenSlide
 
     settings = parseOptions(CONFIG_FILE)
 
@@ -215,7 +214,7 @@ else:
     time_per_patch = patch_extraction_elapsed / tot_patches
     wlog('ElapsedTime for Patch Extraction: ', patch_extraction_elapsed)
     wlog('Time per patch: ', time_per_patch)
-    
+
     h5db.close()
 
 print('[cnn] [patch_extraction = FINISHED] DB saved')

@@ -2,7 +2,7 @@ from xml.etree.ElementTree import parse
 from os import listdir
 from os.path import join, isfile, exists, splitext
 import numpy as np
-from openslide import OpenSlide
+#from openslide import OpenSlide
 import collections
 
 def make_list_of_contour_from_xml(fn_xml,downsample):

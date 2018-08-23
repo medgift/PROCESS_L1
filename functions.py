@@ -2,7 +2,7 @@ import io
 import os
 from os import listdir
 from os.path import join
-from openslide import OpenSlide
+#from openslide import OpenSlide
 import numpy as np
 import cv2
 from integral import patch_sampling_using_integral
@@ -206,7 +206,8 @@ def load_slide(slide_path, slide_level=6, verbose = 0):
         rgb_img, [Numpy array] loaded image
         slide, [OpenSlide object] slide
     '''
-    import pdb; pdb.set_trace()
+    print 'Impossible to load slide without OpenSlide'
+    #import pdb; pdb.set_trace()
     slide = OpenSlide(slide_path)
     rgba_im = slide.read_region((0,0),slide_level,slide.level_dimensions[slide_level])
     rgba_im= np.array(rgba_im)

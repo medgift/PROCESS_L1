@@ -1,6 +1,6 @@
 import matplotlib
 matplotlib.use('agg')
-from openslide import OpenSlide
+#from openslide import OpenSlide
 from os import listdir
 from os.path import join, isfile, exists, splitext
 import sys
@@ -86,7 +86,7 @@ for wsi in val_files:
         plt.savefig('temp/'+wsi+'opening.png')
         from models import standardPreprocess
 
-        y_l, x_l = np.unique(np.where(opening_1>0)[0]), np.unique(np.where(opening_1>0)[1]) 
+        y_l, x_l = np.unique(np.where(opening_1>0)[0]), np.unique(np.where(opening_1>0)[1])
         patch_size=224
         patches=[]
         flag=False
@@ -121,7 +121,7 @@ for wsi in val_files:
                     if counter<batch_size:
                         batch.append(patch)
                         counter += 1
-                    else: 
+                    else:
                         batch=np.asarray(batch)
                         batch=np.reshape(batch,(batch_size,224,224,3))
                         batch.setflags(write=1)
@@ -135,10 +135,10 @@ for wsi in val_files:
                                 probability = max(predictions[p])
                                 hfp.write(str(lrX)+' '+str(lrY)+' '
                                           +str(probability)+'\n')
-                                heatmap[lrY-1:lrY+1, lrX-1:lrX+1] = probability 
+                                heatmap[lrY-1:lrY+1, lrX-1:lrX+1] = probability
                                 if probability>.5:
                                     all_predictions.append(1)
-                                else: 
+                                else:
                                     all_predictions.append(0)
                         batch=[]
                         batch_locations=[]
@@ -168,5 +168,3 @@ for wsi in val_files:
 	plt.imshow(heatmap, cmap='jet', alpha=.7)
 	plt.savefig('temp/heatmaps/heatmap'+wsi+'.png')
 	#break
-            
-
