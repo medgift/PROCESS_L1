@@ -51,7 +51,8 @@ def run(settings):
     #print('[cnn][config] Loading system configurations from: ', CONFIG_FILE)
     #settings = parseOptions(CONFIG_FILE)
 
-    if settings['multinode']=='True':
+    if settings['multinode']==True:
+        import hovorod.keras as hvd
         print('[parallel][train] Initialising Horovod...')
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True

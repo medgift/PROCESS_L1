@@ -46,7 +46,8 @@ def getModel(net_settings, settings, num_classes=1):
         opt = optimizers.SGD(lr = net_settings['lr'],  momentum=net_settings['momentum'], decay=net_settings['decay'], nesterov=net_settings['nesterov'])
         model.compile(loss=net_settings['loss'],
         optimizer= opt, metrics=['accuracy'])
-        if settings['multinode']=='True':
+        if settings['multinode']==True:
+            import horovod.keras as hvd
             callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
             if hvd.rank() == 0:
                 callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
@@ -54,17 +55,18 @@ def getModel(net_settings, settings, num_classes=1):
     elif net_settings['model_type'] == 'resnet101':
         model = resnet101_model(net_settings, settings['patch_size'], settings['patch_size'], 3, 1)
         hv_lr = net_settings['lr']
-        if settings['multinode']=='True':
+        if settings['multinode']==True:
             ## Adjust learning rate based on number of GPUs
             hv_lr = net_settings['lr'] * hvd.size()
         opt = optimizers.SGD(lr = hv_lr,  momentum=net_settings['momentum'], decay=net_settings['decay'], nesterov=net_settings['nesterov'])
-        if settings['multinode']=='True':
+        if settings['multinode']==True:
+            import horovod.keras as hvd
             ## Adding Horovod DistributedOptimizer
             opt = hvd.DistributedOptimizer(opt)
         model.compile(loss=net_settings['loss'],
                       optimizer= opt,
                       metrics=['accuracy'])
-        if settings['multinode']=='True':
+        if settings['multinode']==True:
             callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
             if hvd.rank() == 0:
                 callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
