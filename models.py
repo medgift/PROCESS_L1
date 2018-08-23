@@ -178,7 +178,7 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
                                    y_train,
                                    batch_size=net_settings['batch_size']),
                                    epochs=net_settings['epochs'],
-                                   steps_per_epoch= len(X_train) // net_settings['batch_size'] * 3,
+                                   steps_per_epoch= len(X_train) // net_settings['batch_size'],
                                    validation_data=(X_val, y_val),
                                    callbacks = [SGDLearningRateTracker(),
                                                 CSVLogger(os.path.join(save_history_path, 'train_stats.log'))]
