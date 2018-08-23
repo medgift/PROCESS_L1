@@ -26,7 +26,7 @@ slide_path = join(pwd,filename)
 print "file name : "+slide_path+"\n"
 if isfile(slide_path):
     """is it file? """
-    print 'ERR. install openslide'
+    print('ERR. install openslide')
     exit(0)
     slide=OpenSlide(slide_path)
 elif exists(slide_path):

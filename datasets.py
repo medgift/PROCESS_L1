@@ -168,8 +168,9 @@ class Dataset(object):
                     # and the tumor contours
 
                     if self.name=='camelyon16':
-                        slide = openslide.OpenSlide(slide_path)
-                        rgb_im = np.array(slide.read_region((0,0),7,slide.level_dimensions[7]))
+                        print('import openslides')
+                        #slide = openslide.OpenSlide(slide_path)
+                        #rgb_im = np.array(slide.read_region((0,0),7,slide.level_dimensions[7]))
                         #mask_file = xml_path+'Tumor_{}_Mask.tif'.format(info['patient'])
                         #import pdb; pdb.set_trace()
                         annotations = np.asarray(openslide.OpenSlide(xml_path).read_region((0,0), 7, slide.level_dimensions[7]))
