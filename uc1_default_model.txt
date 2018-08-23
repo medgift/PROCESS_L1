@@ -13,7 +13,7 @@ rng_seed = 1000
 color = True
 
 [train]
-model_type = 'resnet'
+model_type = 'resnet101'
 loss = 'binary_crossentropy'
 activation = 'sigmoid'
 lr = 1e-4
@@ -25,5 +25,5 @@ epochs = 10
 verbose = 1
 
 [load]
-PWD = './data/run0/'
+PWD = './data/intermediate_datasets/cam17'
 h5file = 'patches.hdf5'

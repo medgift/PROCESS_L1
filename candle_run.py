@@ -35,7 +35,7 @@ import time
 import logging
 import h5py as hd
 import shutil
-import horovod.keras as hvd
+#import horovod.keras as hvd
 import math
 from datasets import Dataset
 

@@ -10,7 +10,6 @@ import uc1 as bmk
 from candle_run import run
 import candle_keras as candle
 from keras import backend as K
-
 def initialize_parameters():
 
     # Build benchmark object
