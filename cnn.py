@@ -35,7 +35,7 @@ import time
 import logging
 import h5py as hd
 import shutil
-import horovod.keras as hvd
+#import horovod.keras as hvd
 import math
 from datasets import Dataset
 
@@ -51,6 +51,7 @@ print('[cnn][config] Loading system configurations from: ', CONFIG_FILE)
 settings = parseOptions(CONFIG_FILE)
 
 if settings['multinode']=='True':
+    import horovod.keras as hvd
     print('[parallel][train] Initialising Horovod...')
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
