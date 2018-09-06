@@ -32,7 +32,7 @@ from tflearn.layers.conv import conv_2d, max_pool_2d
 from tflearn.layers.estimator import regression
 from models import *
 import time
-import logging
+import logging as llg
 import h5py as hd
 import shutil
 #import horovod.keras as hvd
@@ -49,6 +49,8 @@ tf.set_random_seed(int(sys.argv[4]))
 CONFIG_FILE = 'config.cfg'
 print('[cnn][config] Loading system configurations from: ', CONFIG_FILE)
 settings = parseOptions(CONFIG_FILE)
+for handler in llg.root.handlers[:]:
+    llg.root.removeHandler(handler)
 
 if settings['multinode']=='True':
     import horovod.keras as hvd
@@ -85,7 +87,9 @@ where:   MM stands for Month
 new_folder = getFolderName()
 os.mkdir(new_folder)
 # creating an INFO.log file to keep track of the model run
-llg.basicConfig(filename=os.path.join(new_folder, 'INFO.log'), filemode='w', level=llg.INFO)
+llg.basicConfig(filename= os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join(new_folder, 'INFO.log')), filemode='w', level=llg.INFO)
+llg.info('Log file for run no. '+ str(new_folder))
+print('Ouptut log saved on file: ' + str(os.path.join(new_folder, 'INFO.log')))
 shutil.copy2(src='./config.cfg', dst=os.path.join(new_folder, '.'))
 
 '''Getting the system configurations from CONFIG_FILE
@@ -350,9 +354,12 @@ if training:
         '''VALIDATION FOR CHALLENGE
            we isolate one random patient from each center to create the validation set
         '''
+        start_time = time.time() 
         print('[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): ')
         x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, cam16, dblist)
-
+        end_time = time.time()
+        print('[cnn][split = validate] Data loading time ', end_time - start_time)
+        wlog('[time] Data loading: ', str(end_time-start_time))
     '''There you go. here you should have both training data and validation data '''
     '''Maybe shuffling. Cleaning. whiteninig etccccccc'''
 
@@ -365,8 +372,12 @@ if training:
     # PostComment: Do I?
 
     #new shufflin
+    start_time = time.time()
     Xtrain, Ytrain = shuffle_data(x_train, y_train)
     Xval, Yval = shuffle_data(x_val, y_val)
+    end_time = time.time()
+    print('[cnn][data shuffling] time elapsed for data shuffling', end_time - start_time)
+    wlog('[time] data shuffling: ', str(end_time - start_time))
     ## old shuffling
     #Xtrain, Ytrain = shuffle(train_patches, y_train)
     #Xval, Yval = shuffle(val_patches, y_val)
@@ -386,12 +397,14 @@ if training:
     wlog('Validation data: ', Xval.shape)
 
     model = getModel(net_settings, settings)
-
+    start_time=time.time()
     #fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
-    history = fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
+    history, epoch_times = fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
+    end_time =time.time()
     wlog('[training] accuracy: ', history.history['acc'])
     wlog('[validation] accuracy: ', history.history['val_acc'])
     wlog('[training] loss: ', history.history['loss'])
     wlog('[validation] loss: ', history.history['val_loss'])
-
+    wlog('[time] total training time', str(end_time-start_time))
+    wlog('[time] epoch training times', epoch_times)
     model.save_weights(os.path.join(new_folder, 'tumor_classifier.h5'))

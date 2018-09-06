@@ -19,6 +19,7 @@ from normalizers import *
 #import horovod.keras as hvd
 from keras.callbacks import Callback
 from keras.callbacks import CSVLogger
+import time
 
 class SGDLearningRateTracker(Callback):
     def on_epoch_end(self, epoch, logs={}):
@@ -27,6 +28,13 @@ class SGDLearningRateTracker(Callback):
         logs['lr'] = lr
         print('\n LR:  {:.6f}\n'.format(lr))
 
+class TimeHistory(Callback):
+    def on_train_begin(self, logs={}):
+        self.times = []
+    def on_epoch_begin(self, epoch, logs={}):
+        self.epoch_time_start = time.time()
+    def on_epoch_end(self, epoch, logs={}):
+        self.times.append(time.time() - self.epoch_time_start)
 
 ### TO DO: Change num_classes to 1 and categorical_crossentropy to binary_crossentropy
 def getModel(net_settings, settings, num_classes=1):
@@ -50,7 +58,7 @@ def getModel(net_settings, settings, num_classes=1):
             callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
             if hvd.rank() == 0:
                 callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
-        return model
+        #return model
     elif net_settings['model_type'] == 'resnet101':
         model = resnet101_model(net_settings, settings['patch_size'], settings['patch_size'], 3, 1)
         hv_lr = net_settings['lr']
@@ -68,12 +76,12 @@ def getModel(net_settings, settings, num_classes=1):
             callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
             if hvd.rank() == 0:
                 callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoint-{epoch}.h5'))
-        return model
+        #return model
     else:
         print('[models] Ugggh. Not ready for this yet.')
         exit(0)
         return None
-
+    return model    
 def standardPreprocess(data):
 
     print('[models] Appling some standard preprocessing to the data. ')
@@ -109,7 +117,8 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
 
     X_train = standardPreprocess(X_train)
     X_val = standardPreprocess(X_val)
-
+    
+    time_callback = TimeHistory()
 
     if not data_augmentation:
         history = model.fit(X_train, y_train,
@@ -117,7 +126,7 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
                 epochs=net_settings['epochs'],
                 verbose = net_settings['verbose'],
                 validation_data=(X_val, y_val),
-                callbacks = [SGDLearningRateTracker(), CSVLogger(os.path.join(save_history_path, 'train_stats.log'))]
+                callbacks = [time_callback, SGDLearningRateTracker(), CSVLogger(os.path.join(save_history_path, 'train_stats.log'))]
                 )
 
         print('[models] Training history keys stored: ', history.history.keys())
@@ -178,7 +187,8 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
                                    epochs=net_settings['epochs'],
                                    steps_per_epoch= len(X_train) // net_settings['batch_size'] * 3,
                                    validation_data=(X_val, y_val),
-                                   callbacks = [SGDLearningRateTracker(),
+                                   callbacks = [time_callback,
+                                                SGDLearningRateTracker(),
                                                 CSVLogger(os.path.join(save_history_path, 'train_stats.log'))]
                                 )
 
@@ -222,7 +232,7 @@ def fitModel(model, net_settings, X_train, y_train, X_val, y_val, save_history_p
         model.save_weights('model.h5')
         print('Model saved to disk')
 
-    return history
+    return history, time_callback.times
 
 def resizePatches(train, val):
     ## not used so far
