@@ -1,10 +1,8 @@
 keras
-openslide-python
 opencv-python
 scikit-image
 numpy
 pycurl
 tflearn
-tensorflow-gpu==1.4.0
 pillow
 h5py
