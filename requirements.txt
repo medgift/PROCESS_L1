@@ -1,10 +1,13 @@
-keras
-openslide-python
-opencv-python
-scikit-image
-numpy
-pycurl
-tflearn
-tensorflow-gpu==1.4.0
-pillow
 h5py
+horovod
+keras
+numpy
+opencv-python
+openslide-python
+matplotlib
+pillow
+pycurl
+scikit-image
+# tensorflow depends on Nvidia CUDA Toolkit
+tensorflow-gpu==1.4.0
+tflearn

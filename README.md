@@ -1,22 +1,24 @@
 # PROCESS Initial Architectures
 
-This repository contains the first Use Case Application for UC#1 of the PROCESS project, http://www.process-project.eu/.
+This repository contains the first Use Case Application for UC#1 of the
+PROCESS project, http://www.process-project.eu/.
 
 # UC1_medicalImaging
 
-The use case tackles cancer detection and tissue classification on the latest challenges in cancer research using histopathology images, such as CAMELYON and TUPAC.
+The use case tackles cancer detection and tissue classification on the latest
+challenges in cancer research using histopathology images, such as CAMELYON
+and TUPAC.
 
-**CAMNET:
+**CAMNET:**
 
 Camelyon17 network for binary classification of breast tissue patches.
 
-**Dependencies
+**Dependencies**
 
-The code is written in Python 2.7 and requires Keras 2.1.5 with Tensorflow 1.4.0 as backend
-Further dependencies are in Requirements.txt  
-See Requirements.txt
+The code is written in Python 2.7 and requires Keras 2.1.5 with Tensorflow
+1.4.0 as backend. Further dependencies are in `Requirements.txt`.
 
-**Usage
+**Usage**
 
 The main script is cnn.py, which reads three input variables and one config file.
 Input variables specify the execution modality for the script:
@@ -24,7 +26,7 @@ Input variables specify the execution modality for the script:
 -train: accepted values are {train, -}. When 'train', network training is performed.
 -GPU number: accepted values are integer numbers {0..9}+ which specify the GPU to use to run computations
 Main sections in the CONFIG.cfg file:
--[settings]: general settings for the patch extraction module, such as the hospital centres to use, the path to WSIs data and annotations, the slides resolution level, etc.  
+-[settings]: general settings for the patch extraction module, such as the hospital centres to use, the path to WSIs data and annotations, the slides resolution level, etc.
 -[train]: training settings for the network (model type, loss, activation function etc.)
 -[load]: settings for loading the preprocessed dataset
 
@@ -54,7 +56,7 @@ Patches are hierarchically stored in a h5 file with the following tree structure
 
 ***Network training
 
-example: python cnn.py load train 0 
+example: python cnn.py load train 0
 
 main output: tumor_classifier.h5
 
@@ -63,4 +65,4 @@ The example command launches the training of the network on the patches dataset,
 See train.sh for more information
 
 
-NOTE: All the systems are currently under development and may need further debugging and troubleshooting. 
+NOTE: All the systems are currently under development and may need further debugging and troubleshooting.

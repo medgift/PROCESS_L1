@@ -1,9 +1,0 @@
-INFO:functions:training_centres: [0, 1, 2, 3]
-INFO:functions:source_fld: /mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/centre_
-INFO:functions:xml_source_fld: /mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations
-INFO:functions:slide_level: 5
-INFO:functions:patch_size: 224
-INFO:functions:n_samples: 500
-INFO:functions:Network settings: {'loss': 'binary_crossentropy', 'verbose': 1, 'decay': 1e-06, 'nesterov': 'True', 'activation': 'sigmoid', 'batch_size': 32, 'epochs': 5, 'lr': 0.0001, 'model_type': 'resnet', 'momentum': 0.9}
-INFO:functions:[cnn][train] Data split config: : validate
-INFO:functions:[cnn][train] COLOR patches: 

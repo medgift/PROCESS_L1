@@ -1,52 +1,77 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+################################################################################
+# cnn: EnhanceR PROCESS UC1
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+# Flags to exclude loading of some modules -- for testing purposes only
+HAS_SKIMAGE_VIEW = False  # depends on Qt
+HAS_TENSORFLOW = False    # depends on CUDA, used in 'train' step
+################################################################################
+# system deps
 import matplotlib
-matplotlib.use('agg')
-import matplotlib.pyplot as plt
 import sys
-import cv2
 import os
 from os import listdir
 from os.path import join, isfile, exists, splitext
 from random import shuffle
+import cv2
 import numpy as np
 from PIL import Image
-#from extract_xml import get_opencv_contours_from_xml
 from skimage.transform.integral import integral_image, integrate
-from skimage.viewer import ImageViewer
-import skimage
+if HAS_SKIMAGE_VIEW:
+    from skimage.viewer import ImageViewer
+# import skimage
 from skimage import io
-from util import otsu_thresholding
+if HAS_TENSORFLOW:
+    from keras import backend as K
+    from keras.models import Sequential
+    from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D
+    import tensorflow as tf
+    import tflearn
+    from tflearn.data_utils import shuffle, to_categorical
+    from tflearn.layers.core import input_data, dropout, fully_connected
+    from tflearn.layers.conv import conv_2d, max_pool_2d
+    from tflearn.layers.estimator import regression
+    import horovod.keras as hvd
+import time
+import h5py as hd
+import shutil
+import math
+################################################################################
+# local deps -- path kludge, waiting for proper packaging
+sys.path.insert(0, 'lib/python2.7/')
+from datasets import Dataset
 from extract_xml import *
 from functions import *
 from integral import patch_sampling_using_integral
-import keras
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
-from keras import backend as K
-from tflearn.data_utils import shuffle
-import tensorflow as tf
-import tflearn
-from tflearn.data_utils import shuffle, to_categorical
-from tflearn.layers.core import input_data, dropout, fully_connected
-from tflearn.layers.conv import conv_2d, max_pool_2d
-from tflearn.layers.estimator import regression
 from models import *
-import time
-import logging
-import h5py as hd
-import shutil
+################################################################################
 
-from datasets import Dataset 
+matplotlib.use('agg')
 
-# PART 1: System INIT
-
+# ***TO-DO*** arg4 to be exposed to CLI
 np.random.seed(int(sys.argv[4]))
 print 'Setting random seed ', sys.argv[4]
-tf.set_random_seed(int(sys.argv[4]))
+
+if HAS_TENSORFLOW:
+    tf.set_random_seed(int(sys.argv[4]))
+
+print '[parallel][train] Initialising Horovod...'
+hvd.init()
+
+# Horovod: pin GPU to be used to process local rank (one GPU per process)
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+config.gpu_options.visible_device_list = str(hvd.local_rank())
+K.set_session(tf.Session(config=config))
+
 
 cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
 cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
-
 
 ''' Loading system configurations '''
 CONFIG_FILE = 'config.cfg'
@@ -65,15 +90,20 @@ print '[cnn][config] Using GPU no. ', GPU_DEVICE
 ''' Creating a log file for the run
 For each run the script creates a saving folder with the following namesystem:
 
-MMDD-HHHH
+MMDD-HHmm
 where:   MM stands for Month
          DD stands for day
-         HHHH stands for Hour and Minute
+         HHmm stands for Hour and Minute
 '''
 new_folder = getFolderName()
 os.mkdir(new_folder)
+
 # creating an INFO.log file to keep track of the model run
-llg.basicConfig(filename=os.path.join(new_folder, 'INFO.log'), filemode='w', level=llg.INFO)
+llg.basicConfig(
+    filename=os.path.join(new_folder, 'INFO.log'),
+    filemode='w',
+    level=llg.INFO
+)
 shutil.copy2(src='./config.cfg', dst=os.path.join(new_folder, '.'))
 
 '''Getting the system configurations from CONFIG_FILE
@@ -94,10 +124,11 @@ load: the patches database is loaded from a separated storage folder
 train: network training is performed
 '''
 load_db = False
-if sys.argv[1]=='load':
+if sys.argv[1] == 'load':
     load_db = True
-#load_db = False # if load_db then open the folder with the db
-            #and use it, together with the settings specified in INFO.log.
+    # if load_db then open the folder with the db
+    #and use it, together with the settings specified in INFO.log.
+
 training = False
 if sys.argv[2] == 'train':
     training = True
@@ -116,6 +147,7 @@ if load_db :
     PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
     h5file = load_settings['h5file'] #'0109-1415/patches.hdf5'
 
+    cam16 = hd.File('./data/intermediate_datasets/cam16/patches.hdf5', 'r')
     h5db = hd.File(os.path.join(PWD, h5file), 'r')
     ''' Old dev
     all_tumor_patches = h5db['all_tumor_patches']
@@ -129,12 +161,19 @@ if load_db :
     '''
     '''DATASET INFO'''
     global dblist
+    #global dblist_cam16
+
     dblist=[]
     def list_entries(name, obj):
         global dblist
         if '/patches' in name:
             dblist.append(name)
+    #def list_entries_16(name, obj):
+    #    global dblist_cam16
+    #    if '/patches' in name:
+    #        dblist_cam16.append(name)
     h5db.visititems(list_entries)
+    cam16.visititems(list_entries)
     print '[debug][cnn] dblist: ', dblist
 
 else:
@@ -153,35 +192,33 @@ else:
     the current patient and the current node.
 
     '''
-    from openslide import OpenSlide
-
     settings = parseOptions(CONFIG_FILE)
 
     start_time = time.time() # time is recorded to track performance
     h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
 
-    camelyon17 = Dataset(name='camelyon17', 
-                         slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/', 
-                         xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations', 
-                         centres = settings['training_centres'], 
+    camelyon17 = Dataset(name='camelyon17',
+                         slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
+                         xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
+                         centres = settings['training_centres'],
                          settings=settings
                         )
-   
-    camelyon17.extract_patches(h5db, new_folder)
-    
-    camelyon16 = Dataset(name='camelyon16', 
-                         slide_source_fld=cam16fld, 
-                         xml_source_fld=cam16xmls, 
+
+    #camelyon17.extract_patches(h5db, new_folder)
+
+    camelyon16 = Dataset(name='camelyon16',
+                         slide_source_fld=cam16fld,
+                         xml_source_fld=cam16xmls,
                          settings=settings
                         )
     camelyon16.settings['slide_level']=7
     camelyon16.settings['training_centres']=0
     camelyon16.settings['xml_source_fld']=cam16xmls
     camelyon16.settings['source_fld']=cam16fld
-    camelyon16.settings['n_samples']=500
+    camelyon16.settings['n_samples']=200
 
     camelyon16.extract_patches(h5db, new_folder)
-    
+
     # Monitoring running time
     patch_extraction_elapsed = time.time()-start_time
     tot_patches = camelyon16.tum_counter + \
@@ -206,8 +243,14 @@ if training:
         as one could use pre-extracted patches to train the model
     '''
 
+    if not HAS_TENSORFLOW:
+        exit('Tensorflow not available')
+
     print '[cnn][train] Training Network...'
     net_settings = parseTrainingOptions(CONFIG_FILE)
+    # Adjust number of epochs based on number of GPUs
+    net_settings['epochs'] = int(math.ceil(float(net_settings['epochs'])/ hvd.size()))
+
     wlog('Network settings', net_settings)
 
     patch_size = settings['patch_size']
@@ -314,17 +357,20 @@ if training:
         print '[cnn][split = select] Validation centres: ', settings['training_centres'][-1]
         x_train, y_train = get_dataset(settings['training_centres'][:-1], h5db, dblist)
         x_val, y_val = get_dataset(settings['training_centres'][-1], h5db, dblist)
-        
+        x_train = x_train[:5]
+        y_train = y_train[:5]
+        x_val = x_val[:5]
+        y_val = y_val[:5]
     elif settings['split']=='validate':
         '''VALIDATION FOR CHALLENGE
-           we isolate one random patient from each center to create the validation set 
+           we isolate one random patient from each center to create the validation set
         '''
         print '[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): '
-        x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, dblist)
+        x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, cam16, dblist)
 
-        
-        
-        
+
+
+
     '''There you go. here you should have both training data and validation data '''
     '''Maybe shuffling. Cleaning. whiteninig etccccccc'''
 
