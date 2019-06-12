@@ -1,13 +1,24 @@
+# system requirements
+#   openslide
+#   Nvidia CUDA Toolkit
+#   TCL-Tk
+
 h5py
 horovod
 keras
 numpy
 opencv-python
+
+# depends on native 'openslide'
 openslide-python
+
 matplotlib
 pillow
 pycurl
 scikit-image
-# tensorflow depends on Nvidia CUDA Toolkit
+
+# tensorflow depends on Nvidia CUDA Toolkit. Install it explicitly if Horovod
+# complains with "Unable to build TensorFlow plugin"
+tensorflow
 tensorflow-gpu==1.4.0
 tflearn

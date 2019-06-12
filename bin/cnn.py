@@ -74,13 +74,14 @@ cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon
 cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
 
 ''' Loading system configurations '''
-CONFIG_FILE = 'config.cfg'
+# TO-DO: have a '--config-file' option
+CONFIG_FILE = os.environ["PROCESS-UC1__CONFIG_FILE"] or 'config.cfg'
 print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
 
 ''' Selecting the GPU device for training '''
 #GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
 GPU_DEVICE = sys.argv[3]
-os.environ["CUDA_VISIBLE_DEVICES"]= GPU_DEVICE
+os.environ["CUDA_VISIBLE_DEVICES"] = GPU_DEVICE
 
 ''' Selection of COLOR or GREYSCALE'''
 COLOR = True

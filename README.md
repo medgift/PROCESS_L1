@@ -18,14 +18,21 @@ Camelyon17 network for binary classification of breast tissue patches.
 The code is written in Python 2.7 and requires Keras 2.1.5 with Tensorflow
 1.4.0 as backend. Further dependencies are in `Requirements.txt`.
 
-**Usage**
+## Configuration
 
-The main script is cnn.py, which reads three input variables and one config file.
+A configuration file can be set via the env variable `PROCESS-UC1__CONFIG_FILE`. F.i. on a *nix-like system, run
+
+    $ export PROCESS-UC1__CONFIG_FILE=<path-to-your-config-file>
+
+## Usage
+
+The main script is `cnn.py`, which gets three input arguments and one config file.
+
 Input variables specify the execution modality for the script:
 -load: accepted values are {load, -}. When 'load', the patches database is loaded from a separated storage folder. If '-' then the high resolution patches are extracted from the raw Whole Slide Images (WSIs).
 -train: accepted values are {train, -}. When 'train', network training is performed.
 -GPU number: accepted values are integer numbers {0..9}+ which specify the GPU to use to run computations
-Main sections in the CONFIG.cfg file:
+Main sections in the config.cfg file:
 -[settings]: general settings for the patch extraction module, such as the hospital centres to use, the path to WSIs data and annotations, the slides resolution level, etc.
 -[train]: training settings for the network (model type, loss, activation function etc.)
 -[load]: settings for loading the preprocessed dataset
