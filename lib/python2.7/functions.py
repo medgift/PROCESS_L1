@@ -47,10 +47,10 @@ def get_data_val(data_class, centres, db, db16, dblist, rand_patient):
                     pat_idx.append(d)
                 else:
                     cam16_idx.append(d)
-    
+
     print '[debug][get_data_val] Selected patient index for val: ', rand_patient
     val_idx = pat_idx[rand_patient::10]
-    pat_idx = [x for x in pat_idx if x not in val_idx] 
+    pat_idx = [x for x in pat_idx if x not in val_idx]
     for n in pat_idx:
         if db[n].shape[0]>0:
             train_patches.append(db[n])
@@ -364,7 +364,7 @@ def parseOptions(configFile):
 
 def parseLoadOptions(configFile):
     settings = {}
-    config = ConfigParser.RawConfigParser(allow_no_value = True)
+    config = ConfigParser.SafeConfigParser()
     config.read(configFile)
     settings['PWD'] = config.get("load", "PWD")
     settings['h5file'] = config.get("load", "h5file")

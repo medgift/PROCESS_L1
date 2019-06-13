@@ -42,7 +42,7 @@ import h5py as hd
 import shutil
 import math
 ################################################################################
-# local deps -- path kludge, waiting for proper packaging
+# local deps -- path kludge, waiting for proper packaging...
 sys.path.insert(0, 'lib/python2.7/')
 from datasets import Dataset
 from extract_xml import *
@@ -51,17 +51,78 @@ from integral import patch_sampling_using_integral
 from models import *
 ################################################################################
 
+# defaults
+config = {
+    'data_dir'          : './data',
+    'results_dir'       : './results',
+    'settings'          : {
+        'GPU'                   : 0,
+        'training_centres'      : [0, 1, 2, 3],
+        'source_fld'            : '%(data_dir)/centre_',
+        'xml_source_fld'        : '%(data_dir)/lesion_annotations',
+        'slide_level'           : 5,
+        'patch_size'            : 224,
+        'n_samples'             : 500,
+    },
+    'train'             : {
+        'model_type'            : 'resnet',
+        'loss'                  : 'binary_crossentropy',
+        'activation'            : 'sigmoid',
+        'lr'                    : 1e-4,
+        'decay'                 : 1e-6,
+        'momentum'              : 0.9,
+        'nesterov'              : True,
+        'batch_size'            : 32,
+        'epochs'                : 10,
+        'verbose'               : 1,
+    },
+    'load'              : {
+        'PWD'                   : '/mnt/nas2/results/IntermediateResults/Camelyon/all500',
+        'h5file'                : 'patches.hdf5',
+    },
+}
+
+################################################################################
+
 matplotlib.use('agg')
 
-# ***TO-DO*** arg4 to be exposed to CLI
-np.random.seed(int(sys.argv[4]))
-print 'Setting random seed ', sys.argv[4]
+'''
+cnn.py -- EnahnceR PROCESS_UC1 launch script
+
+Usage
+=====
+
+High resolution patch extraction
+--------------------------------
+
+    $ python2 cnn.py - - [XML_ANNOTATION_FILE]
+
+Options
+-------
+
+    XML_ANNOTATION_FILE
+        Path to a single XML annotation file. If given a single WSI slide will
+        be processed for any configured 'centre'
+
+
+'''
+
+single_ann_mode = False
+single_ann_file = None
+if sys.argv[4]:
+    single_ann_mode = True
+    single_ann_file = sys.argv[4]
+    print('[cnn][config] single annotation mode. XML file: ', single_ann_file)
+
+# ***TO-DO*** arg5 to be exposed to CLI?
+np.random.seed(int(sys.argv[5]))
+print 'Setting random seed ', sys.argv[5]
 
 if HAS_TENSORFLOW:
-    tf.set_random_seed(int(sys.argv[4]))
+    tf.set_random_seed(int(sys.argv[5]))
 
-print '[parallel][train] Initialising Horovod...'
-hvd.init()
+    print '[parallel][train] Initialising Horovod...'
+    hvd.init()
 
 # Horovod: pin GPU to be used to process local rank (one GPU per process)
 config = tf.ConfigProto()
@@ -142,7 +203,6 @@ if load_db :
 
     settings = parseOptionsFromLog('0102-1835', 'INFO.log') # to implement
 
-    load_settings = parseLoadOptions(CONFIG_FILE)
     print '[cnn][config] Loading data config: ', load_settings
 
     PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
@@ -198,20 +258,22 @@ else:
     start_time = time.time() # time is recorded to track performance
     h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
 
-    camelyon17 = Dataset(name='camelyon17',
-                         slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
-                         xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
-                         centres = settings['training_centres'],
-                         settings=settings
-                        )
+    camelyon17 = Dataset(
+        name='camelyon17',
+        slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
+        xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
+        centres = settings['training_centres'],
+        settings=settings
+    )
 
     #camelyon17.extract_patches(h5db, new_folder)
 
-    camelyon16 = Dataset(name='camelyon16',
-                         slide_source_fld=cam16fld,
-                         xml_source_fld=cam16xmls,
-                         settings=settings
-                        )
+    camelyon16 = Dataset(
+        name='camelyon16',
+        slide_source_fld=cam16fld,
+        xml_source_fld=cam16xmls,
+        settings=settings
+    )
     camelyon16.settings['slide_level']=7
     camelyon16.settings['training_centres']=0
     camelyon16.settings['xml_source_fld']=cam16xmls
