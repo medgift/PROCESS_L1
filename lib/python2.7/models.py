@@ -59,7 +59,7 @@ def getModel(net_settings, num_classes=1):
         opt = hvd.DistributedOptimizer(opt)
 
         model.compile(loss=net_settings['loss'],
-    			optimizer= opt,  
+    			optimizer= opt,
     			metrics=['accuracy'])
         callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),]
         if hvd.rank() == 0:

@@ -7,13 +7,16 @@
 #
 # This file is part of PROCESS_UC1.
 ################################################################################
-# Flags to exclude loading of some modules -- for testing purposes only
-HAS_SKIMAGE_VIEW = False  # depends on Qt
-HAS_TENSORFLOW = False    # depends on CUDA, used in 'train' step
-################################################################################
+# kludge, waiting for proper packaging...
+import sys
+sys.path.insert(0, 'lib/python2.7/')
+from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, CONFIG_FILE, def_config
+
 # system deps
 import matplotlib
-import sys
+# *must* stay here, before downstream imports of matplotlib.pyplot
+matplotlib.use('agg')
+
 import os
 from os import listdir
 from os.path import join, isfile, exists, splitext
@@ -24,8 +27,8 @@ from PIL import Image
 from skimage.transform.integral import integral_image, integrate
 if HAS_SKIMAGE_VIEW:
     from skimage.viewer import ImageViewer
-# import skimage
-from skimage import io
+    # import skimage
+    from skimage import io
 if HAS_TENSORFLOW:
     from keras import backend as K
     from keras.models import Sequential
@@ -42,50 +45,14 @@ import h5py as hd
 import shutil
 import math
 ################################################################################
-# local deps -- path kludge, waiting for proper packaging...
-sys.path.insert(0, 'lib/python2.7/')
+# package deps
 from datasets import Dataset
 from extract_xml import *
-from functions import *
+from functions import parseLoadOptions, parseConfig
 from integral import patch_sampling_using_integral
-from models import *
-################################################################################
-
-# defaults
-config = {
-    'data_dir'          : './data',
-    'results_dir'       : './results',
-    'settings'          : {
-        'GPU'                   : 0,
-        'training_centres'      : [0, 1, 2, 3],
-        'source_fld'            : '%(data_dir)/centre_',
-        'xml_source_fld'        : '%(data_dir)/lesion_annotations',
-        'slide_level'           : 5,
-        'patch_size'            : 224,
-        'n_samples'             : 500,
-    },
-    'train'             : {
-        'model_type'            : 'resnet',
-        'loss'                  : 'binary_crossentropy',
-        'activation'            : 'sigmoid',
-        'lr'                    : 1e-4,
-        'decay'                 : 1e-6,
-        'momentum'              : 0.9,
-        'nesterov'              : True,
-        'batch_size'            : 32,
-        'epochs'                : 10,
-        'verbose'               : 1,
-    },
-    'load'              : {
-        'PWD'                   : '/mnt/nas2/results/IntermediateResults/Camelyon/all500',
-        'h5file'                : 'patches.hdf5',
-    },
-}
-
-################################################################################
-
-matplotlib.use('agg')
-
+if HAS_TENSORFLOW:
+    from models import *
+###############################################################################
 '''
 cnn.py -- EnahnceR PROCESS_UC1 launch script
 
@@ -107,6 +74,26 @@ Options
 
 '''
 
+'''Getting the system configurations from CONFIG_FILE
+The system configuration can be set in config.cfg >> see README.rd for more information.
+settings is a dictionary containing the following keys:
+
+    training_centres
+    source_fld_
+    xml_source_fld
+    slide_level
+    patch_size
+    n_samples
+'''
+# TO-DO: have a '--config-file' option
+print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
+
+
+config = parseConfig(CONFIG_FILE, def_config)
+
+load_settings = parseLoadOptions(CONFIG_FILE)
+
+
 single_ann_mode = False
 single_ann_file = None
 if sys.argv[4]:
@@ -125,19 +112,15 @@ if HAS_TENSORFLOW:
     hvd.init()
 
 # Horovod: pin GPU to be used to process local rank (one GPU per process)
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-config.gpu_options.visible_device_list = str(hvd.local_rank())
+tfconfig = tf.ConfigProto()
+tfconfig.gpu_options.allow_growth = True
+tfconfig.gpu_options.visible_device_list = str(hvd.local_rank())
 K.set_session(tf.Session(config=config))
 
 
 cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
 cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
 
-''' Loading system configurations '''
-# TO-DO: have a '--config-file' option
-CONFIG_FILE = os.environ["PROCESS-UC1__CONFIG_FILE"] or 'config.cfg'
-print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
 
 ''' Selecting the GPU device for training '''
 #GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
@@ -167,19 +150,6 @@ llg.basicConfig(
     level=llg.INFO
 )
 shutil.copy2(src='./config.cfg', dst=os.path.join(new_folder, '.'))
-
-'''Getting the system configurations from CONFIG_FILE
-The system configuration can be set in config.cfg >> see README.rd for more information.
-settings is a dictionary containing the following keys:
-
-    training_centres
-    source_fld_
-    xml_source_fld
-    slide_level
-    patch_size
-    n_samples
-'''
-load_settings = parseLoadOptions(CONFIG_FILE)
 
 ''' Selecting the modality:
 load: the patches database is loaded from a separated storage folder

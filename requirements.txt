@@ -20,5 +20,6 @@ scikit-image
 # tensorflow depends on Nvidia CUDA Toolkit. Install it explicitly if Horovod
 # complains with "Unable to build TensorFlow plugin"
 tensorflow
-tensorflow-gpu==1.4.0
+# v-1.4 needs CUDA-8
+tensorflow-gpu==1.14.0rc1
 tflearn

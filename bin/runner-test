@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# -*- mode: shell-script; -*-
+################################################################################
+# runner-test: cnn runner for testing purposes (no tensorwlow, skimage...)
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+echo >&2 "[WARN] Test runner: some modules won't be loaded -- DO NOT USE in production"
+
+# Note: env unset == False, anything else == True (avoid setting '0' for False)
+PROCESS_UC1__NO_SKIMAGE_VIEW=1
+PROCESS_UC1__NO_TENSORFLOW=1
+
+export PROCESS_UC1__NO_SKIMAGE_VIEW PROCESS_UC1__NO_TENSORFLOW
+
+python2 bin/cnn.py

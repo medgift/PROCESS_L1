@@ -1,3 +1,4 @@
+from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW
 import ConfigParser
 import io
 import os
@@ -7,7 +8,8 @@ from openslide import OpenSlide
 import numpy as np
 import cv2
 from integral import patch_sampling_using_integral
-from skimage.viewer import ImageViewer
+if HAS_SKIMAGE_VIEW:
+    from skimage.viewer import ImageViewer
 from extract_xml import *
 from functions import *
 from util import otsu_thresholding
@@ -361,6 +363,16 @@ def parseOptions(configFile):
     wlog('n_samples', settings['n_samples'])
 
     return settings
+
+'''Parse an ini-style 'configFile', merge its contents with dict 'defConfig'
+and return a 'config' dict (same structure as `defaults.def_config`)
+'''
+def parseConfig(configFile, defConfig):
+    config = {}
+    parser = ConfigParser.SafeConfigParser(defConfig)
+    parser.readfp(open(configFile))
+
+    return config
 
 def parseLoadOptions(configFile):
     settings = {}
