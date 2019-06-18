@@ -1,7 +1,5 @@
 from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW
-import ConfigParser
-import io
-import os
+import ConfigParser, io, sys, re
 from os import listdir
 from os.path import join
 from openslide import OpenSlide
@@ -187,6 +185,10 @@ def setDBHierarchy(h5db, settings, info):
 def wlog(tag, info):
     ''' wlog:
         saves the information in info into a log file
+
+        TO-DO
+        -----
+        * init logger and export object
     '''
     llg.basicConfig(level=llg.INFO)
     logger = llg.getLogger(__name__)
@@ -365,18 +367,76 @@ def parseOptions(configFile):
     return settings
 
 '''Parse an ini-style 'configFile', merge its contents with dict 'defConfig'
-and return a 'config' dict (same structure as `defaults.def_config`)
+and return a new 'config' dict (same structure as `defaults.def_config`)
 '''
 def parseConfig(configFile, defConfig):
+    def _typeof(obj):
+        '''Return a list of stringified type(obj) and types of its elements, if any
+        (only lists are supported).
+        '''
+        fre = lambda v: re.match("<type\s+'(\w+)'>", str(type(v))).group(1)
+        types = [fre(obj)]
+        if isinstance(obj, list):
+            types += map(fre, obj)
+        return types
+
+    def _typify(stuff, types):
+        '''Type-cast the `stuff` string according to list `types` as returned by
+        `_typeof()`. types[0] is the container type, followin elements, if
+        any, specify the types of comma-splitted `stuff`
+        '''
+        # t is a stringified type, like 'str'
+        tf = lambda t, v: eval(t)(v)
+        items = stuff
+        if len(types) > 1:
+            items = map(tf, types[1:], stuff.split(','))
+
+        return tf(types[0], items)
+
+
     config = {}
+    # parser = ConfigParser.RawConfigParser(defConfig, allow_no_value=True)
     parser = ConfigParser.SafeConfigParser(defConfig)
-    parser.readfp(open(configFile))
+    try:
+        parser.readfp(open(configFile))
+    except IOError as e:
+       sys.stderr.write("[WARN] {}: can't read config file -- {}. Will use defaults\n"
+                        .format(configFile, e))
+
+    # merge. defaults() with "sections" is rather useless: indeed, `get(sct,
+    # opt)` won't get the corresponding default value, unless 'opt' is a
+    # top-level key in defaults().
+    for sct in parser.defaults():
+        config[sct] = {}
+        try:
+            parser.add_section(sct)
+        except ConfigParser.DuplicateSectionError:
+            pass
+
+        for opt, val in parser.defaults()[sct].items():
+            # ConfigParser is type-agnostic (uhm... great), thus types are
+            # inferred from defaults
+            t = _typeof(val)
+            opt_from_file = False
+            try:
+                # may be empty, and will stay so
+                val = parser.get(sct, opt)
+                opt_from_file = True
+            except ConfigParser.NoOptionError:
+                pass
+
+            # sys.stderr.write("[dbg] parser set: %s, %s, %s (%s => %s)\n" % (sct, opt, val, type(val), t))
+
+            config[sct][opt] = val
+            if opt_from_file:
+                # type-recast
+                config[sct][opt] = _typify(val, t)
 
     return config
 
 def parseLoadOptions(configFile):
     settings = {}
-    config = ConfigParser.SafeConfigParser()
+    config = ConfigParser.RawConfigParser(allow_no_value = True)
     config.read(configFile)
     settings['PWD'] = config.get("load", "PWD")
     settings['h5file'] = config.get("load", "h5file")

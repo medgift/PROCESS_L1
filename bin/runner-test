@@ -10,9 +10,9 @@
 echo >&2 "[WARN] Test runner: some modules won't be loaded -- DO NOT USE in production"
 
 # Note: env unset == False, anything else == True (avoid setting '0' for False)
-PROCESS_UC1__NO_SKIMAGE_VIEW=1
-PROCESS_UC1__NO_TENSORFLOW=1
+PROCESS_UC1__HAS_SKIMAGE_VIEW=
+PROCESS_UC1__HAS_TENSORFLOW=
 
-export PROCESS_UC1__NO_SKIMAGE_VIEW PROCESS_UC1__NO_TENSORFLOW
+export PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
 python2 bin/cnn.py

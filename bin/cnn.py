@@ -9,8 +9,10 @@
 ################################################################################
 # kludge, waiting for proper packaging...
 import sys
-sys.path.insert(0, 'lib/python2.7/')
+sys.path += ['lib/python2.7/', '../lib/python2.7/']
 from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, CONFIG_FILE, def_config
+
+import pprint as pp
 
 # system deps
 import matplotlib
@@ -48,7 +50,7 @@ import math
 # package deps
 from datasets import Dataset
 from extract_xml import *
-from functions import parseLoadOptions, parseConfig
+from functions import parseLoadOptions, parseConfig, parseTrainingOptions, parseOptions
 from integral import patch_sampling_using_integral
 if HAS_TENSORFLOW:
     from models import *
@@ -91,7 +93,14 @@ print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
 
 config = parseConfig(CONFIG_FILE, def_config)
 
-load_settings = parseLoadOptions(CONFIG_FILE)
+sys.stderr.write('[dbg]  config:\n%s\n' % pp.pformat(config))
+
+
+# load_settings = parseLoadOptions(CONFIG_FILE)
+
+# sys.stderr.write('[dbg] load settings:\n%s\n' % pp.pformat(load_settings))
+
+exit(0)
 
 
 single_ann_mode = False
