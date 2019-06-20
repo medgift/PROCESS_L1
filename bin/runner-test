@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# -*- mode: shell-script; -*-
+# -*- mode: shell-script -*-
 ################################################################################
 # runner-test: cnn runner for testing purposes (no tensorwlow, skimage...)
 ################################################################################
@@ -15,4 +15,4 @@ PROCESS_UC1__HAS_TENSORFLOW=
 
 export PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
-python2 bin/cnn.py
+bin/cnn.py

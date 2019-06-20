@@ -15,7 +15,15 @@ import logging as llg
 import datetime
 import h5py as hd
 
+'''To-DO
+* remove all parse...() functions obsoleted by `parseConfig`
+'''
+
+'''** NOT IMPLEMENTED YET** Do not use
+'''
 def parseOptionsFromLog(folder, logfile):
+    raise AppError, 'Not implemeted yet'
+
     settings = {}
     settings = parseOptions('config.cfg')
     return settings
@@ -339,6 +347,8 @@ def get_annotation_list(centre, xml_source_fld):
     return xml_of_selected_centre
 '''
 def parseOptions(configFile):
+    raise AppError, 'Obsoleted by `parseConfig()`'
+
     settings = {}
 
     config = ConfigParser.RawConfigParser(allow_no_value = True)
@@ -368,6 +378,8 @@ def parseOptions(configFile):
 
 '''Parse an ini-style 'configFile', merge its contents with dict 'defConfig'
 and return a new 'config' dict (same structure as `defaults.def_config`)
+
+This is the only function needed to store program's config once for all.
 '''
 def parseConfig(configFile, defConfig):
     def _typeof(obj):
@@ -435,6 +447,8 @@ def parseConfig(configFile, defConfig):
     return config
 
 def parseLoadOptions(configFile):
+    raise AppError, 'Obsoleted by `parseConfig()`'
+
     settings = {}
     config = ConfigParser.RawConfigParser(allow_no_value = True)
     config.read(configFile)
@@ -443,6 +457,8 @@ def parseLoadOptions(configFile):
     return settings
 
 def parseTrainingOptions(configFile):
+    raise AppError, 'Obsoleted by `parseConfig()`'
+
     settings = {}
     config = ConfigParser.RawConfigParser(allow_no_value = True)
     config.read(configFile)
@@ -461,3 +477,22 @@ def parseTrainingOptions(configFile):
 
 def getFolderName():
     return str(datetime.datetime.now()).split(' ')[0][-5:].split('-')[0]+str(datetime.datetime.now()).split(' ')[0][-5:].split('-')[1]+'-'+str(datetime.datetime.now()).split(' ')[1][:5].split(':')[0]+str(datetime.datetime.now()).split(' ')[1][:5].split(':')[1]
+
+
+'''
+TBI
+'''
+def validate_pipeline(string):
+    raise AppError, 'Not implemeted yet'
+
+    if foo:
+        msg = "%r is not a perfect square" % string
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+def validate_non_neg_int(string):
+    value=int(string)
+    if value < 0:
+        raise argparse.ArgumentTypeError("%s: must be non negative integer" % string)
+
+    return value

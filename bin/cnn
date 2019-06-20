@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8; mode: python -*-
 ################################################################################
 # cnn: EnhanceR PROCESS UC1
 ################################################################################
@@ -8,7 +8,7 @@
 # This file is part of PROCESS_UC1.
 ################################################################################
 # kludge, waiting for proper packaging...
-import sys
+import sys, argparse
 sys.path += ['lib/python2.7/', '../lib/python2.7/']
 from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, CONFIG_FILE, def_config
 
@@ -50,7 +50,7 @@ import math
 # package deps
 from datasets import Dataset
 from extract_xml import *
-from functions import parseLoadOptions, parseConfig, parseTrainingOptions, parseOptions
+from functions import parseConfig, validate_non_neg_int
 from integral import patch_sampling_using_integral
 if HAS_TENSORFLOW:
     from models import *
@@ -64,14 +64,58 @@ Usage
 High resolution patch extraction
 --------------------------------
 
-    $ python2 cnn.py - - [XML_ANNOTATION_FILE]
+    $ python2 [OPTIONS] bin/cnn.py [STEP1 [STEP2...]]
+
 
 Options
 -------
 
-    XML_ANNOTATION_FILE
-        Path to a single XML annotation file. If given a single WSI slide will
-        be processed for any configured 'centre'
+    --gpu-id, -g N
+        (int>=0). Force GPU ID to use. Default '0'.
+
+    --xml-ann-file, -x XML_ANNOTATION_FILE
+        (str). Path to a single XML annotation file. If given a single WSI slide will
+        be processed for any configured 'centre'. Default: None -- will scan data input dir.
+
+    --seed, -s S
+        (int). Random seed to initialize the Numpy lib
+
+
+Pipeline
+========
+
+For now only two pipeline steps are allowed. When none are given, the program
+works in patch extraction mode. Mode summary:
+
+#  mode                           arg1  arg2
+---------------------------------------------
+1  patch extraction               -     -
+2  network training               load  train
+3  patch extraction + training    -     train
+
+TO-DO: what about adding command line shortcuts for pipelines?
+
+
+Patch extraction
+----------------
+
+Just run:
+
+    $ python2 bin/cnn.py [OPTIONS]
+
+
+Network training
+----------------
+
+
+Extract patches and train:
+
+    $ python2 bin/cnn.py [OPTIONS] train
+
+
+Load patches and train:
+
+    $ python2 bin/cnn.py [OPTIONS] load train
 
 
 '''
@@ -87,44 +131,82 @@ settings is a dictionary containing the following keys:
     patch_size
     n_samples
 '''
-# TO-DO: have a '--config-file' option
+# TO-DO: have a '--config-file' option.
+# Config file is parsed _once_ for ever
 print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
-
-
+# All options are now stored in a dict (same structure as for `defaults::def_config`)
 config = parseConfig(CONFIG_FILE, def_config)
 
-sys.stderr.write('[dbg]  config:\n%s\n' % pp.pformat(config))
+# command line options override default and config file's ones
+parser = argparse.ArgumentParser(description='EnhanceR PROCESS_UC1 master script.')
+parser.add_argument(
+    'pipeline',
+    metavar='STEP',
+    type=str, # pipeline composition is validated downstream
+    nargs='+',
+    choices=('extract', 'load', 'train'),
+    help='pipeline step'
+)
+parser.add_argument(
+    '-g, --gpu-id',
+    dest='gpu_id',
+    metavar='GPU-ID',
+    type=validate_non_neg_int,
+    # default=0, # default from config['GPU']
+    help='GPU ID to use'
+)
+parser.add_argument(
+    '-s, --seed',
+    dest='seed',
+    metavar='SEED',
+    type=int,
+    default=0,
+    help='Numpy random seed'
+)
+parser.add_argument(
+    '-x, --xml-ann-file',
+    dest='xml_ann_file',
+    metavar='XML-ANNOTATION-FILE',
+    nargs='?',
+    type=argparse.FileType('r'),
+    help='XML annotation file'
+)
 
+# easier with a dict
+args = vars(parser.parse_args())
 
-# load_settings = parseLoadOptions(CONFIG_FILE)
+# conf override, None by args default
+if args['gpu_id']:
+    sys.stderr.write('[dbg][config] overriding settings:GPU: %s\n' % args['gpu_id'])
+    config['settings']['GPU'] = args['gpu_id']
 
-# sys.stderr.write('[dbg] load settings:\n%s\n' % pp.pformat(load_settings))
+sys.stderr.write('[dbg] config:\n%s\n' % pp.pformat(config))
 
-exit(0)
+################################################################################
 
 
 single_ann_mode = False
-single_ann_file = None
-if sys.argv[4]:
+single_ann_file = args['xml_ann_file'] # open file oject
+if single_ann_file:
     single_ann_mode = True
-    single_ann_file = sys.argv[4]
-    print('[cnn][config] single annotation mode. XML file: ', single_ann_file)
+    print('[cnn][config] single annotation mode. XML file: %s' % single_ann_file.name)
 
-# ***TO-DO*** arg5 to be exposed to CLI?
-np.random.seed(int(sys.argv[5]))
-print 'Setting random seed ', sys.argv[5]
+print('Setting random seed: %s' % args['seed'])
+np.random.seed(args['seed'])
+
+################################################################################
 
 if HAS_TENSORFLOW:
-    tf.set_random_seed(int(sys.argv[5]))
+    tf.set_random_seed(args['seed'])
 
     print '[parallel][train] Initialising Horovod...'
     hvd.init()
 
-# Horovod: pin GPU to be used to process local rank (one GPU per process)
-tfconfig = tf.ConfigProto()
-tfconfig.gpu_options.allow_growth = True
-tfconfig.gpu_options.visible_device_list = str(hvd.local_rank())
-K.set_session(tf.Session(config=config))
+    # Horovod: pin GPU to be used to process local rank (one GPU per process)
+    tfconfig = tf.ConfigProto()
+    tfconfig.gpu_options.allow_growth = True
+    tfconfig.gpu_options.visible_device_list = str(hvd.local_rank())
+    K.set_session(tf.Session(config=config))
 
 
 cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
@@ -133,13 +215,12 @@ cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camel
 
 ''' Selecting the GPU device for training '''
 #GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
-GPU_DEVICE = sys.argv[3]
-os.environ["CUDA_VISIBLE_DEVICES"] = GPU_DEVICE
+GPU_DEVICE = config['settings']['GPU']
+os.putenv("CUDA_VISIBLE_DEVICES", str(GPU_DEVICE))
+print '[cnn][config] Using GPU no. ', GPU_DEVICE
 
 ''' Selection of COLOR or GREYSCALE'''
 COLOR = True
-
-print '[cnn][config] Using GPU no. ', GPU_DEVICE
 
 ''' Creating a log file for the run
 For each run the script creates a saving folder with the following namesystem:
@@ -180,8 +261,9 @@ if load_db :
     Loading already extracted patches from an existing HDF5 database.
     '''
 
-    settings = parseOptionsFromLog('0102-1835', 'INFO.log') # to implement
+    # settings = parseOptionsFromLog('0102-1835', 'INFO.log') # to implement
 
+    load_settings = config['load']
     print '[cnn][config] Loading data config: ', load_settings
 
     PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
@@ -232,7 +314,7 @@ else:
     the current patient and the current node.
 
     '''
-    settings = parseOptions(CONFIG_FILE)
+    settings = config['settings']
 
     start_time = time.time() # time is recorded to track performance
     h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
@@ -289,7 +371,7 @@ if training:
         exit('Tensorflow not available')
 
     print '[cnn][train] Training Network...'
-    net_settings = parseTrainingOptions(CONFIG_FILE)
+    net_settings = config['train']
     # Adjust number of epochs based on number of GPUs
     net_settings['epochs'] = int(math.ceil(float(net_settings['epochs'])/ hvd.size()))
 
