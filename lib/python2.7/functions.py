@@ -1,6 +1,7 @@
-from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW
+from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, valid_pipelines
 import ConfigParser, io, sys, re
-from os import listdir
+from argparse import ArgumentTypeError
+from os import listdir, mkdir
 from os.path import join
 from openslide import OpenSlide
 import numpy as np
@@ -9,11 +10,14 @@ from integral import patch_sampling_using_integral
 if HAS_SKIMAGE_VIEW:
     from skimage.viewer import ImageViewer
 from extract_xml import *
-from functions import *
 from util import otsu_thresholding
 import logging as llg
-import datetime
 import h5py as hd
+################################################################################
+# globals
+debug = False
+logger = None
+################################################################################
 
 '''To-DO
 * remove all parse...() functions obsoleted by `parseConfig`
@@ -190,18 +194,57 @@ def setDBHierarchy(h5db, settings, info):
         wlog('DB Adding Node Group to Normal Patches for Patient {}'.format(info['patient']), 'node{}'.format(info['node']))
     return
 
-def wlog(tag, info):
-    ''' wlog:
-        saves the information in info into a log file
 
-        TO-DO
-        -----
-        * init logger and export object
+def log_init(
+        log_level='info',
+        log_fname='info.log',
+):
+    '''TO-DO: replace with logreport
     '''
-    llg.basicConfig(level=llg.INFO)
+
+    global debug, logger
+
+    try:
+        numeric_level = getattr(llg, log_level.upper())
+    except Exception as e:
+        raise ValueError('Invalid log level: "%s" (exception: %s)' % (log_level, str(e)))
+
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % log_level)
+
+    log_fmt = '%(asctime)s %(levelname)-8s'
+    # more fuss with 'DEBUG'... looks like there's no way to discriminate by tag name
+    if numeric_level <= 10:
+        log_fmt += ' %(funcName)-12s'
+        debug = True
+
+    llg.basicConfig(
+        format   = log_fmt + ' %(message)s',
+        level    = numeric_level,
+        datefmt  = '%Y-%m-%d %H:%M:%S',
+        filename = log_fname,
+        filemode = 'w'
+    )
+
+    # console logging of messages with priority higher than INFO to the sys.stderr
+    console = llg.StreamHandler()
+    console.setLevel(numeric_level)
+    log_fmt = llg.Formatter('%(levelname)-8s %(message)s')
+    console.setFormatter(log_fmt)
+    llg.getLogger(__name__).addHandler(console)
+
+    llg.captureWarnings(True)
     logger = llg.getLogger(__name__)
-    logger.info(tag + ': '+ str(info))
-    return
+
+    logger.info("log file is '%s'" % log_fname)
+
+    return logger
+
+def wlog(subj, msg):
+    ''' wlog: saves the information in info into a log file
+    '''
+    logger.info(subj + ': '+ msg)
+
 
 def load_slide(slide_path, slide_level=6, verbose = 0):
     ''' load_slide:
@@ -412,7 +455,7 @@ def parseConfig(configFile, defConfig):
     try:
         parser.readfp(open(configFile))
     except IOError as e:
-       sys.stderr.write("[WARN] {}: can't read config file -- {}. Will use defaults\n"
+       sys.stderr.write("[warn] {}: can't read config file -- {}. Will use defaults\n"
                         .format(configFile, e))
 
     # merge. defaults() with "sections" is rather useless: indeed, `get(sct,
@@ -475,24 +518,20 @@ def parseTrainingOptions(configFile):
     settings['verbose'] = int(config.get("train", "verbose"))
     return settings
 
-def getFolderName():
-    return str(datetime.datetime.now()).split(' ')[0][-5:].split('-')[0]+str(datetime.datetime.now()).split(' ')[0][-5:].split('-')[1]+'-'+str(datetime.datetime.now()).split(' ')[1][:5].split(':')[0]+str(datetime.datetime.now()).split(' ')[1][:5].split(':')[1]
 
 
 '''
-TBI
+Validata list:`pipeline`. Allowed values are defined in `defaults::valid_pipelines`
 '''
-def validate_pipeline(string):
-    raise AppError, 'Not implemeted yet'
+def validate_pipeline(pipeline):
+    if not pipeline in valid_pipelines:
+        raise ArgumentTypeError("{}: must be in {}".format(pipeline, valid_pipelines))
 
-    if foo:
-        msg = "%r is not a perfect square" % string
-        raise argparse.ArgumentTypeError(msg)
-    return value
+    return pipeline
 
 def validate_non_neg_int(string):
     value=int(string)
     if value < 0:
-        raise argparse.ArgumentTypeError("%s: must be non negative integer" % string)
+        raise ArgumentTypeError("{}: must be non negative integer".format(string))
 
     return value

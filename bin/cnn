@@ -10,7 +10,13 @@
 # kludge, waiting for proper packaging...
 import sys, argparse
 sys.path += ['lib/python2.7/', '../lib/python2.7/']
-from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, CONFIG_FILE, def_config
+from defaults import (
+    HAS_SKIMAGE_VIEW,
+    HAS_TENSORFLOW,
+    CONFIG_FILE,
+    def_config,
+    time_stamp
+)
 
 import pprint as pp
 
@@ -19,7 +25,7 @@ import matplotlib
 # *must* stay here, before downstream imports of matplotlib.pyplot
 matplotlib.use('agg')
 
-import os
+import os, traceback
 from os import listdir
 from os.path import join, isfile, exists, splitext
 from random import shuffle
@@ -42,15 +48,23 @@ if HAS_TENSORFLOW:
     from tflearn.layers.conv import conv_2d, max_pool_2d
     from tflearn.layers.estimator import regression
     import horovod.keras as hvd
-import time
+
 import h5py as hd
 import shutil
 import math
 ################################################################################
 # package deps
-from datasets import Dataset
+from functions import (
+    debug,
+    logger,
+    parseConfig,
+    validate_non_neg_int,
+    validate_pipeline,
+    log_init,
+    wlog
+)
+from pipeline import extract, load, train
 from extract_xml import *
-from functions import parseConfig, validate_non_neg_int
 from integral import patch_sampling_using_integral
 if HAS_TENSORFLOW:
     from models import *
@@ -64,7 +78,7 @@ Usage
 High resolution patch extraction
 --------------------------------
 
-    $ python2 [OPTIONS] bin/cnn.py [STEP1 [STEP2...]]
+    $ bin/cnn.py [OPTIONS] [STEP1 [STEP2...]]
 
 
 Options
@@ -80,6 +94,9 @@ Options
     --seed, -s S
         (int). Random seed to initialize the Numpy lib
 
+    --log-level, -l LEVEL
+        (str). Logging level (notset, debug, info, warn, error, critical). Default: info.
+
 
 Pipeline
 ========
@@ -87,11 +104,14 @@ Pipeline
 For now only two pipeline steps are allowed. When none are given, the program
 works in patch extraction mode. Mode summary:
 
-#  mode                           arg1  arg2
----------------------------------------------
-1  patch extraction               -     -
-2  network training               load  train
-3  patch extraction + training    -     train
+#  mode                           arg1     arg2
+------------------------------------------------
+1  patch extraction               extract  -
+2  patch extraction + training    extract  train
+3  training existing patches      load     train
+
+**Developer notes.** Programmatic pipeline definitions are in `defaults.py`
+
 
 TO-DO: what about adding command line shortcuts for pipelines?
 
@@ -101,7 +121,7 @@ Patch extraction
 
 Just run:
 
-    $ python2 bin/cnn.py [OPTIONS]
+    $ bin/cnn.py [OPTIONS]
 
 
 Network training
@@ -110,30 +130,42 @@ Network training
 
 Extract patches and train:
 
-    $ python2 bin/cnn.py [OPTIONS] train
+    $ bin/cnn.py [OPTIONS] train
 
 
 Load patches and train:
 
-    $ python2 bin/cnn.py [OPTIONS] load train
+    $ bin/cnn.py [OPTIONS] load train
 
+
+Program output
+==============
+
+Results are stored in a directory whose root path is set (see L<Configuration>) by option
+
+  settings => results_dir/<name>
+
+with <name> in the form of a time-stamp 'MMDD-hhmm' (MM for month, DD for day,
+hh for hour and mm for minute).
+
+
+Configuration File
+==================
+
+The default configuration file is 'config.cfg'. It can be overridden by the
+ENV variable 'PROCESS_UC1__CONFIG_FILE'. So. f.i., one would call the program:
+
+    $ PROCESS_UC1__CONFIG_FILE=path/to/my/config.ini bin/cnn ...
+
+See 'etc/config.ini' for a description of the available options (TO-DO). Mind
+that some of them can be overridden on the command line, notably:
+
+    gpu-id => GPU
 
 '''
 
-'''Getting the system configurations from CONFIG_FILE
-The system configuration can be set in config.cfg >> see README.rd for more information.
-settings is a dictionary containing the following keys:
-
-    training_centres
-    source_fld_
-    xml_source_fld
-    slide_level
-    patch_size
-    n_samples
-'''
-# TO-DO: have a '--config-file' option.
 # Config file is parsed _once_ for ever
-print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
+# print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
 # All options are now stored in a dict (same structure as for `defaults::def_config`)
 config = parseConfig(CONFIG_FILE, def_config)
 
@@ -141,14 +173,14 @@ config = parseConfig(CONFIG_FILE, def_config)
 parser = argparse.ArgumentParser(description='EnhanceR PROCESS_UC1 master script.')
 parser.add_argument(
     'pipeline',
-    metavar='STEP',
+    # metavar='STEP', # no metavar, else choices won't be proposed on -h
     type=str, # pipeline composition is validated downstream
     nargs='+',
     choices=('extract', 'load', 'train'),
-    help='pipeline step'
+    help='2-step pipeline'
 )
 parser.add_argument(
-    '-g, --gpu-id',
+    '-g', '--gpu-id',
     dest='gpu_id',
     metavar='GPU-ID',
     type=validate_non_neg_int,
@@ -156,7 +188,16 @@ parser.add_argument(
     help='GPU ID to use'
 )
 parser.add_argument(
-    '-s, --seed',
+    '-l', '--log-level',
+    dest='log_level',
+    # metavar='LEVEL', # no metavar, else choices won't be proposed on -h
+    default='info',
+    type=str, # validated downstream
+    choices=('notset', 'debug', 'info', 'warn', 'error', 'critical'),
+    help='logging level'
+)
+parser.add_argument(
+    '-s', '--seed',
     dest='seed',
     metavar='SEED',
     type=int,
@@ -164,10 +205,9 @@ parser.add_argument(
     help='Numpy random seed'
 )
 parser.add_argument(
-    '-x, --xml-ann-file',
+    '-x', '--xml-ann-file',
     dest='xml_ann_file',
     metavar='XML-ANNOTATION-FILE',
-    nargs='?',
     type=argparse.FileType('r'),
     help='XML annotation file'
 )
@@ -175,365 +215,63 @@ parser.add_argument(
 # easier with a dict
 args = vars(parser.parse_args())
 
+# prepare results directory
+new_results_dir = os.path.expanduser(
+    os.path.join(config['settings']['results_dir'], time_stamp.strftime('%m%d-%H%M'))
+)
+try:
+    os.makedirs(new_results_dir)
+except Exception as e:
+    sys.exit('[error] {}: cannot make results dir: {}\n'.format(new_results_dir, e))
+
+# start logging
+logger = log_init(args['log_level'], os.path.join(new_results_dir, 'INFO.log'))
+shutil.copy2(src=CONFIG_FILE, dst=new_results_dir)
+
+logger.debug(
+    '[cnn][config] saving configuration file ({}) to results dir: {}'.format(CONFIG_FILE, new_results_dir)
+)
+
 # conf override, None by args default
 if args['gpu_id']:
-    sys.stderr.write('[dbg][config] overriding settings:GPU: %s\n' % args['gpu_id'])
     config['settings']['GPU'] = args['gpu_id']
 
-sys.stderr.write('[dbg] config:\n%s\n' % pp.pformat(config))
+logger.debug('config:\n%s\n' % pp.pformat(config))
+logger.debug('args:\n%s\n' % pp.pformat(args))
+
+try:
+    validate_pipeline(args['pipeline'])
+except argparse.ArgumentTypeError as e:
+    sys.exit('[error] invalid pipeline definition: {}\n'.format(e))
+
 
 ################################################################################
+# init
+################################################################################
 
+
+################################################################################
 
 single_ann_mode = False
 single_ann_file = args['xml_ann_file'] # open file oject
 if single_ann_file:
     single_ann_mode = True
-    print('[cnn][config] single annotation mode. XML file: %s' % single_ann_file.name)
+    wlog('[cnn][config]', 'single annotation mode. XML file: %s' % single_ann_file.name)
 
-print('Setting random seed: %s' % args['seed'])
+wlog('[cnn]', 'Setting random seed: %s' % args['seed'])
 np.random.seed(args['seed'])
 
 ################################################################################
-
-if HAS_TENSORFLOW:
-    tf.set_random_seed(args['seed'])
-
-    print '[parallel][train] Initialising Horovod...'
-    hvd.init()
-
-    # Horovod: pin GPU to be used to process local rank (one GPU per process)
-    tfconfig = tf.ConfigProto()
-    tfconfig.gpu_options.allow_growth = True
-    tfconfig.gpu_options.visible_device_list = str(hvd.local_rank())
-    K.set_session(tf.Session(config=config))
-
-
-cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
-cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
-
-
-''' Selecting the GPU device for training '''
-#GPU_DEVICE = get_gpu_from_config(CONFIG_FILE)
-GPU_DEVICE = config['settings']['GPU']
-os.putenv("CUDA_VISIBLE_DEVICES", str(GPU_DEVICE))
-print '[cnn][config] Using GPU no. ', GPU_DEVICE
-
-''' Selection of COLOR or GREYSCALE'''
-COLOR = True
-
-''' Creating a log file for the run
-For each run the script creates a saving folder with the following namesystem:
-
-MMDD-HHmm
-where:   MM stands for Month
-         DD stands for day
-         HHmm stands for Hour and Minute
-'''
-new_folder = getFolderName()
-os.mkdir(new_folder)
-
-# creating an INFO.log file to keep track of the model run
-llg.basicConfig(
-    filename=os.path.join(new_folder, 'INFO.log'),
-    filemode='w',
-    level=llg.INFO
-)
-shutil.copy2(src='./config.cfg', dst=os.path.join(new_folder, '.'))
-
-''' Selecting the modality:
-load: the patches database is loaded from a separated storage folder
-train: network training is performed
-'''
-load_db = False
-if sys.argv[1] == 'load':
-    load_db = True
-    # if load_db then open the folder with the db
-    #and use it, together with the settings specified in INFO.log.
-
-training = False
-if sys.argv[2] == 'train':
-    training = True
-
-if load_db :
-    ''' DATABASE LOADING
-
-    Loading already extracted patches from an existing HDF5 database.
-    '''
-
-    # settings = parseOptionsFromLog('0102-1835', 'INFO.log') # to implement
-
-    load_settings = config['load']
-    print '[cnn][config] Loading data config: ', load_settings
-
-    PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
-    h5file = load_settings['h5file'] #'0109-1415/patches.hdf5'
-
-    cam16 = hd.File('./data/intermediate_datasets/cam16/patches.hdf5', 'r')
-    h5db = hd.File(os.path.join(PWD, h5file), 'r')
-    ''' Old dev
-    all_tumor_patches = h5db['all_tumor_patches']
-    all_normal_patches = h5db['all_normal_patches']
-    '''
-
-    ''' NEW DATA LOAD MODULE
-
-    Training and validation centres are selected and disjoint
-    Manual Shuffle -- to improve
-    '''
-    '''DATASET INFO'''
-    global dblist
-    #global dblist_cam16
-
-    dblist=[]
-    def list_entries(name, obj):
-        global dblist
-        if '/patches' in name:
-            dblist.append(name)
-    #def list_entries_16(name, obj):
-    #    global dblist_cam16
-    #    if '/patches' in name:
-    #        dblist_cam16.append(name)
-    h5db.visititems(list_entries)
-    cam16.visititems(list_entries)
-    print '[debug][cnn] dblist: ', dblist
-
-else:
-    ''' PATCH EXTRACTION MODULE
-
-    Here the patches are extracted and saved in a HDF5 database patches.hdf5
-    with the following structure:
-
-            Tumor / Level N / Centre C / Patient P / Node No/  patches
-            Tumor / Level N / Centre C / Patient P / Node No/ locations
-
-            Normal / Level N / Centre C / Patient P / Node No/ patches
-            Normal / Level N / Centre C / Patient P / Node No/ locations
-
-    where N, C, P and No are respectively the slide_level, the current centre,
-    the current patient and the current node.
-
-    '''
-    settings = config['settings']
-
-    start_time = time.time() # time is recorded to track performance
-    h5db = createH5Dataset(os.path.join(new_folder, 'patches.hdf5'))
-
-    camelyon17 = Dataset(
-        name='camelyon17',
-        slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
-        xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
-        centres = settings['training_centres'],
-        settings=settings
-    )
-
-    #camelyon17.extract_patches(h5db, new_folder)
-
-    camelyon16 = Dataset(
-        name='camelyon16',
-        slide_source_fld=cam16fld,
-        xml_source_fld=cam16xmls,
-        settings=settings
-    )
-    camelyon16.settings['slide_level']=7
-    camelyon16.settings['training_centres']=0
-    camelyon16.settings['xml_source_fld']=cam16xmls
-    camelyon16.settings['source_fld']=cam16fld
-    camelyon16.settings['n_samples']=200
-
-    camelyon16.extract_patches(h5db, new_folder)
-
-    # Monitoring running time
-    patch_extraction_elapsed = time.time()-start_time
-    tot_patches = camelyon16.tum_counter + \
-                  camelyon16.nor_counter + \
-                  camelyon17.tum_counter + \
-                  camelyon17.nor_counter
-    time_per_patch = patch_extraction_elapsed / tot_patches
-    wlog('ElapsedTime for Patch Extraction: ', patch_extraction_elapsed)
-    wlog('Time per patch: ', time_per_patch)
-
-    h5db.close()
-
-print '[cnn] [patch_extraction = FINISHED] DB saved'
-    #exit(0)
-
-if training:
-    ''' CNN model to classify tumor patches from normal patches
-
-        Note: should load pretrained weights /and this is URGENT
-
-        Also, this part might be split from the patch extraction Module
-        as one could use pre-extracted patches to train the model
-    '''
-
-    if not HAS_TENSORFLOW:
-        exit('Tensorflow not available')
-
-    print '[cnn][train] Training Network...'
-    net_settings = config['train']
-    # Adjust number of epochs based on number of GPUs
-    net_settings['epochs'] = int(math.ceil(float(net_settings['epochs'])/ hvd.size()))
-
-    wlog('Network settings', net_settings)
-
-    patch_size = settings['patch_size']
-
-    # note: shuffling so that we are removing dependencies btween the
-    # extracted patches. One of the problems here might be that if you have overlapping
-    # patches or really similar patches then they end up being present both in the
-    # training split and in the testing splits. This would give high accuracy but
-    # wouldn't necessarily mean that you are learning the right thing.
-    settings['split']='validate'
-
-    print '[cnn][train] Data split config: ', settings['split']
-    wlog('[cnn][train] Data split config: ', settings['split'])
-
-    settings['color']=COLOR
-
-    if settings['color']:
-        print '[cnn][train] COLOR patches'
-        wlog('[cnn][train] COLOR patches', '')
-    else:
-        print '[cnn][train] GREYSCALE patches'
-        wlog('[cnn][train] GREYSCALE patches', '')
-
-    if settings['split']=='shuffle':
-        tum_patch_list = shuffle(all_tumor_patches)[0]
-        nor_patch_list = shuffle(all_normal_patches)[0]
-        train_ix = int(len(tum_patch_list) * 0.8)
-
-        print  '[cnn][train] Number of training tumor patches: ', train_ix
-        wlog('[cnn][train] No. training tumor patches: ', train_ix)
-
-        train_patches = np.zeros((2*train_ix, patch_size, patch_size, 3))
-        train_patches[:train_ix]=tum_patch_list[:train_ix]
-        train_patches[train_ix:]=nor_patch_list[:train_ix]
-        '''Labeling:
-        1 for Tumor patch
-        0 for Normal patch
-        '''
-        y_train = np.zeros((2*train_ix))
-        y_train[:train_ix]=1
-
-        stop_idx = min(len(tum_patch_list), len(nor_patch_list))
-        val_ix=( stop_idx - train_ix)
-
-        val_patches = np.zeros((2*val_ix, patch_size, patch_size, 3))
-        val_patches[:val_ix]=tum_patch_list[train_ix:stop_idx]
-        val_patches[val_ix:]=nor_patch_list[train_ix:stop_idx]
-        y_val = np.zeros((2*val_ix))
-        y_val[:val_ix]=1
-
-    elif settings['split']=='sequential':
-        print  '[cnn][train] SEQUENTIAL split '
-        wlog('[cnn][train] SEQUENTIAL split ', '')
-
-        if not settings['color']:
-            tum_patch_list = [cv2.cvtColor( np.uint8(patch_entry), cv2.COLOR_RGB2GRAY) for patch_entry in all_tumor_patches]
-            nor_patch_list = [cv2.cvtColor( np.uint8(patch_entry), cv2.COLOR_RGB2GRAY) for patch_entry in all_normal_patches]
-        else:
-            tum_patch_list = [patch_entry for patch_entry in all_tumor_patches]
-            nor_patch_list = [patch_entry for patch_entry in all_normal_patches]
-
-        train_ix = int(len(tum_patch_list) * 0.8)
-
-        print  'Number of training tumor patches: ', train_ix
-        wlog('No. training tumor patches: ', train_ix)
-
-        train_patches = np.zeros((2*train_ix, patch_size, patch_size, 3))
-        if not settings['color']:
-            # replicating the grayscale image on each channel
-            train_patches[:train_ix,:,:, 0]= train_patches[:train_ix,:,:, 1]= train_patches[:train_ix,:,:, 2]= shuffle(tum_patch_list[:train_ix])[0]
-            train_patches[train_ix:,:,:,0]= train_patches[train_ix:,:,:,1]= train_patches[train_ix:,:,:,2]= shuffle(nor_patch_list[:train_ix])[0]
-        else:
-            train_patches[:train_ix] = shuffle(tum_patch_list[:train_ix])[0]
-            train_patches[train_ix:]= shuffle(nor_patch_list[:train_ix])[0]
-
-        ''' Labeling:
-        1 for Tumor patch
-        0 for Normal patch
-        '''
-
-        y_train = np.zeros((2*train_ix))
-        y_train[:train_ix]=1
-
-        stop_idx = min(len(tum_patch_list), len(nor_patch_list))
-        val_ix=( stop_idx - train_ix)
-
-        val_patches = np.zeros((2*val_ix, patch_size, patch_size, 3))
-
-        if not settings['color']:
-            # replicating the grayscale image on each channel
-            val_patches[:val_ix,:,:, 0]= val_patches[:val_ix,:,:, 1]= val_patches[:val_ix,:,:, 2]= shuffle(tum_patch_list[train_ix:stop_idx])[0]
-            val_patches[val_ix:,:,:,0]= val_patches[val_ix:,:,:,1]= val_patches[val_ix:,:,:,2]= shuffle(nor_patch_list[train_ix:stop_idx])[0]
-        else:
-            val_patches[:val_ix] = tum_patch_list[train_ix:stop_idx]
-            val_patches[val_ix:] = nor_patch_list[train_ix:stop_idx]
-
-        y_val = np.zeros((2*val_ix))
-        y_val[:val_ix]=1
-
-
-    elif settings['split']=='select':
-        '''NEW DATA LOAD MODULE ## to merge'''
-        print '[cnn][split = select] Training centres: ', settings['training_centres'][:-1]
-        print '[cnn][split = select] Validation centres: ', settings['training_centres'][-1]
-        x_train, y_train = get_dataset(settings['training_centres'][:-1], h5db, dblist)
-        x_val, y_val = get_dataset(settings['training_centres'][-1], h5db, dblist)
-        x_train = x_train[:5]
-        y_train = y_train[:5]
-        x_val = x_val[:5]
-        y_val = y_val[:5]
-    elif settings['split']=='validate':
-        '''VALIDATION FOR CHALLENGE
-           we isolate one random patient from each center to create the validation set
-        '''
-        print '[cnn][split = validate] Picking N slides for validation from each center (keeping the patients separated): '
-        x_train, y_train, x_val, y_val = get_dataset_val_split(settings['training_centres'], h5db, cam16, dblist)
-
-
-
-
-    '''There you go. here you should have both training data and validation data '''
-    '''Maybe shuffling. Cleaning. whiteninig etccccccc'''
-
-    '''
-    batch_size = 5
-    num_classes = 2
-    epochs = 50
-    '''
-    ###Note: Ya need some data preprocessing here.
-    # PostComment: Do I?
-
-    #new shufflin
-    Xtrain, Ytrain = shuffle_data(x_train, y_train)
-    Xval, Yval = shuffle_data(x_val, y_val)
-    ## old shuffling
-    #Xtrain, Ytrain = shuffle(train_patches, y_train)
-    #Xval, Yval = shuffle(val_patches, y_val)
-
-    #  use only for Categorical Crossentropy loss:
-    #  encode the Ys as 2 class labels
-    if net_settings['loss']=='categorical_crossentropy':
-        print 'Encoding the labels to categorical..'
-        Ytrain = to_categorical(Ytrain, 2)
-        Yval = to_categorical(Yval, 2)
-
-    print 'Trainig dataset: ', Xtrain.shape
-    print 'Validation dataset: ',Xval.shape
-    print 'Trainig labels: ', Ytrain.shape
-    print 'Validation labels: ', Yval.shape
-    wlog('Training data: ', Xtrain.shape)
-    wlog('Validation data: ', Xval.shape)
-
-    model = getModel(net_settings)
-
-    #fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
-    history = fitModel(model, net_settings, Xtrain, Ytrain, Xval, Yval, save_history_path=new_folder)
-    wlog('[training] accuracy: ', history.history['acc'])
-    wlog('[validation] accuracy: ', history.history['val_acc'])
-    wlog('[training] loss: ', history.history['loss'])
-    wlog('[validation] loss: ', history.history['val_loss'])
-
-    model.save_weights(os.path.join(new_folder, 'tumor_classifier.h5'))
+# pipeline run
+################################################################################
+
+for step in args['pipeline']:
+    wlog('[cnn]', 'running step: {}'.format(step))
+    try:
+        eval(step)(config, new_results_dir, logger)
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        sys.exit('[cnn] {}: pipeline step failed: {} '.format(step, e))
+
+
+sys.exit(0)
