@@ -25,7 +25,7 @@ import matplotlib
 # *must* stay here, before downstream imports of matplotlib.pyplot
 matplotlib.use('agg')
 
-import os, traceback
+import os, traceback, errno
 from os import listdir
 from os.path import join, isfile, exists, splitext
 from random import shuffle
@@ -97,6 +97,9 @@ Options
     --log-level, -l LEVEL
         (str). Logging level (notset, debug, info, warn, error, critical). Default: info.
 
+    --results-sdir, -r  RESULTS-SUBDIR
+        (str). Results subdir name under `config[settings][results_dir]`.
+        Default: auto-generated as a "MMDD-hhmm" timestamp
 
 Pipeline
 ========
@@ -143,10 +146,10 @@ Program output
 
 Results are stored in a directory whose root path is set (see L<Configuration>) by option
 
-  settings => results_dir/<name>
+  settings => results_dir/<sub-dir>
 
-with <name> in the form of a time-stamp 'MMDD-hhmm' (MM for month, DD for day,
-hh for hour and mm for minute).
+with <sub-dir> in the form of a time-stamp 'MMDD-hhmm' (MM for month, DD for day,
+hh for hour and mm for minute), or set via CL option `--results-sdir.
 
 
 Configuration File
@@ -211,21 +214,35 @@ parser.add_argument(
     type=argparse.FileType('r'),
     help='XML annotation file'
 )
+parser.add_argument(
+    '-r', '--results-sdir',
+    dest='results_sdir',
+    metavar='RESULTS-SUBDIR',
+    type=str,
+    help='results subdir name under `config[settings][results_dir]`. Default: auto-generated as a "MMDD-hhmm" timestamp'
+)
 
 # easier with a dict
 args = vars(parser.parse_args())
 
 # prepare results directory
+results_sdir = args['results_sdir'] if args['results_sdir'] else time_stamp.strftime('%m%d-%H%M')
 new_results_dir = os.path.expanduser(
-    os.path.join(config['settings']['results_dir'], time_stamp.strftime('%m%d-%H%M'))
+    os.path.join(config['settings']['results_dir'], results_sdir)
 )
 try:
     os.makedirs(new_results_dir)
-except Exception as e:
-    sys.exit('[error] {}: cannot make results dir: {}\n'.format(new_results_dir, e))
+except OSError as e:
+    if e.errno == errno.EEXIST and args['results_sdir']:
+        pass
+    else:
+        sys.exit('[error] {}: cannot make results dir: {}\n'.format(new_results_dir, e))
 
 # start logging
-logger = log_init(args['log_level'], os.path.join(new_results_dir, 'INFO.log'))
+logger = log_init(
+    log_level=args['log_level'],
+    log_fname=os.path.join(new_results_dir, 'INFO.log')
+)
 shutil.copy2(src=CONFIG_FILE, dst=new_results_dir)
 
 logger.debug(

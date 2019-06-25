@@ -2,7 +2,7 @@ from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, valid_pipelines
 import ConfigParser, io, sys, re
 from argparse import ArgumentTypeError
 from os import listdir, mkdir
-from os.path import join
+from os.path import join, expanduser
 from openslide import OpenSlide
 import numpy as np
 import cv2
@@ -195,13 +195,25 @@ def setDBHierarchy(h5db, settings, info):
     return
 
 
-def log_init(
-        log_level='info',
-        log_fname='info.log',
-):
-    '''TO-DO: replace with logreport
-    '''
 
+def log_init(
+        log_fname='info.log',
+        log_level='info'
+):
+    """Init a global logger
+
+    Arguments
+    +++++++++
+
+    :param str log_fname: log file name. Can be a path which must exist
+
+    :param str log_level: logging level
+
+    TO-DO
+    +++++
+
+    * replace with logreport
+    """
     global debug, logger
 
     try:
@@ -211,6 +223,7 @@ def log_init(
 
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % log_level)
+
 
     log_fmt = '%(asctime)s %(levelname)-8s'
     # more fuss with 'DEBUG'... looks like there's no way to discriminate by tag name
@@ -296,48 +309,27 @@ def get_morp_im(rgb_im, verbose = 0):
 def get_otsu_im(rgb_im, verbose = 0):
     return gray2otsu(rgb2gray(rgb_im))
 
-'''OLD preprocess: fino a che non te sei accorta che
-	hai fatto na cazzata
+def preprocess(
+        slide_path,  xml_path,
+        slide_level=7,
+        patch_size=224,
+        verbose=1
+):
+    """WSI preprocessing to extract tumor patches
 
-def preprocess(slide_path,  xml_path, slide_level = 6, patch_size = 256, verbose = 1):
-    ''''''function preprocess:
-        WSI preprocessing to extract tumor patches
+    preprocess takes the WSI path, and the slide_level and returns the
+    the WSI openslide obj, the tumor annotation mask, the WSI image and
+    the tumor contours
 
-        input:
-        slide_path, path to WSI
-        slide_level, level of resolution (default = 6)
 
-        output:
-        mask, [Numpy array of 0 and 1s] tumor annotation mask
-        rgb_img, [Numpy array] loaded image
-    ''''''
-    rgb_im, slide = load_slide(slide_path, slide_level=slide_level)
+    input:
+    slide_path, path to WSI
+    slide_level, level of resolution (default = 6)
 
-    tumor_contours = get_opencv_contours_from_xml(xml_path,slide.level_downsamples[slide_level])
-    tum_im = rgb_im
-
-    con =cv2.drawContours(tum_im, tumor_contours,-1,(0,255,0), 5)
-
-    _,annotations,_ = cv2.split(tum_im)
-    annotations = annotations == 255
-    annotations_mask = annotations.astype(int)
-
-    return slide, annotations_mask, rgb_im, tum_im
-'''
-
-def preprocess(slide_path,  xml_path, slide_level = 7, patch_size = 224, verbose = 1):
-    '''function preprocess:
-        WSI preprocessing to extract tumor patches
-
-        input:
-        slide_path, path to WSI
-        slide_level, level of resolution (default = 6)
-
-        output:
-        mask, [Numpy array of 0 and 1s] tumor annotation mask
-        rgb_img, [Numpy array] loaded image
-    '''
-    print'[functions][data_preprocessing] NEW PREPROCESS FUNCTION'
+    output:
+    mask, [Numpy array of 0 and 1s] tumor annotation mask
+    rgb_img, [Numpy array] loaded image
+    """
     rgb_im, slide = load_slide(slide_path, slide_level=slide_level)
 
     tumor_contours = get_opencv_contours_from_xml(xml_path,slide.level_downsamples[slide_level])
@@ -359,36 +351,6 @@ def check_data(centre, source_fld, xml_path):
     slide_path = join(pwd,WSI_file)
     return slide_path, None
 
-'''
-def get_WSI_path(centre, source_fld, xml_file):
-    WSI_file = xml_file[:-3]+'tif'
-
-    print 'Workin with: ', WSI_file
-    slide_path = join(source_fld+str(centre),WSI_file)
-    return slide_path
-
-def get_annotation_list(centre, xml_source_fld):
-    xml_of_selected_centre = []
-    xml_list = listdir(xml_source_fld)
-    for x in xml_list:
-        identifier = x[-13]
-        if centre == 0:
-            if int(identifier)<=1:
-                xml_of_selected_centre.append(x)
-        elif centre == 1:
-            if int(identifier) == 2 or int(identifier) == 3:
-                xml_of_selected_centre.append(x)
-        elif centre == 2:
-            if int(identifier) == 4 or int(identifier) == 5:
-                xml_of_selected_centre.append(x)
-        elif centre == 3:
-            if int(identifier) == 6 or int(identifier) == 7:
-                xml_of_selected_centre.append(x)
-        elif centre == 4:
-            if int(identifier) == 8 or int(identifier) == 9:
-                xml_of_selected_centre.append(x)
-    return xml_of_selected_centre
-'''
 def parseOptions(configFile):
     raise AppError, 'Obsoleted by `parseConfig()`'
 
@@ -486,6 +448,10 @@ def parseConfig(configFile, defConfig):
             if opt_from_file:
                 # type-recast
                 config[sct][opt] = _typify(val, t)
+
+            # expand ~ in paths. $HOME & Co. might be also supported... TO-DO
+            if isinstance(config[sct][opt], str) and '/' in config[sct][opt]:
+                config[sct][opt] = expanduser(config[sct][opt])
 
     return config
 

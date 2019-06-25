@@ -23,15 +23,43 @@ time_stamp = dt.now()
 
 def_config = {
     'settings'          : {
-        'data_dir'              : 'data',
-        'results_dir'           : 'results',
+        # globals for all datasets
+        'project_root'          : '~/EnhanceR/PROCESS_UC1',
+        'data_dir'              : 'data',       # subdir of 'project_root'
+        'results_dir'           : 'results',    # (ditto)
+        # TO-DO: this stuff below should go elsewhere
         'GPU'                   : 0,
-        'training_centres'      : [0, 1, 2, 3],
-        'source_fld'            : 'data/centre_',
-        'xml_source_fld'        : 'data/lesion_annotations',
         'slide_level'           : 5,
         'patch_size'            : 224,
         'n_samples'             : 500,
+    },
+    # Datasets come in different families. For now we support only 'camelyon17'
+    'camelyon16'        : {
+        # see example @ <https://drive.google.com/drive/folders/0BzsdkU4jWx9Bb19WNndQTlUwb2M>
+        # TO-DO
+    },
+    'camelyon17'        : {
+        # file system structure (stored under`[settings][data_dir]`) is like
+        #
+        # |-- centre_1
+        # |   `-- patient_021_node_3.tif
+        # | ...
+        # |-- centre_N
+        # |   `-- patient_086_node_4.tif
+        # `-- lesion_annotations
+        #     |-- patient_004_node_4.xml
+        #     |-- ...
+        #     `-- patient_086_node_4.xml
+        #
+        # basename for 'centre_<CID>', where <CID>s are listed in `training_centres`
+        'source_fld'            : 'data/centre_',               # 'data' is interpolated in `config.ini`
+        'xml_source_fld'        : 'data/lesion_annotations',    # (ditto)
+        'training_centres'      : [0, 1, 2, 3],                 # CID list
+        'centre_name_regex'     : 'centre_(?P<CID>\d+)',        # match center ID
+        # slide files and annotation files bear names like
+        #     patient_<PID>_node_<NID>.{xml, tif}
+        # we want to match <PID> (patient ID) and <NID> (node ID)
+        'patient_name_regex'    : 'patient_(?P<PID>\d+)_node_(?P<NID>\d+)',
     },
     # pipeline steps
     'train'             : {
@@ -48,7 +76,7 @@ def_config = {
     },
     # TO-DO: clarify items' meaning
     'load'              : {
-        'PWD'                   : 'results/intermediate',
+        'PWD'                   : 'results/intermediate',       # 'results' is interpolated in `config.ini`
         'h5file'                : 'patches.hdf5',
     },
 }

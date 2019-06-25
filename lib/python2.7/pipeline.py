@@ -34,55 +34,33 @@ def extract(config, results_dir, logger):
     '''
     logger.info('[extract] step starting...')
 
-    from functions import (
-        createH5Dataset
-    )
+    from functions import createH5Dataset
     from datasets import Dataset
 
-    settings = config['settings']
-
-    h5db = createH5Dataset(os.path.join(results_dir, 'patches.hdf5'))
-
-    # [BUG] is this ever used?
-    # camelyon17 = Dataset(
-    #     name='camelyon17',
-    #     slide_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/',
-    #     xml_source_fld='/mnt/nas2/results/DatasetsVolumeBackup/ToReadme/CAMELYON17/lesion_annotations',
-    #     centres = settings['training_centres'],
-    #     settings=settings
-    # )
-    # camelyon17.extract_patches(h5db, results_dir)
-
-    # [BUG] why hardcoded? Sould come from config...
-    # cam16fld='/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Train_Tumor/'
-    # cam16xmls = '/mnt/nas2/results/DatasetsVolumeBackup/ToCurate/ContextVision/Camelyon16/TrainingData/Ground_Truth/Mask/'
-    cam16fld = settings['source_fld']
-    cam16xmls = settings['xml_source_fld']
-
-    camelyon16 = Dataset(
-        name='camelyon16',
-        slide_source_fld=cam16fld,
-        xml_source_fld=cam16xmls,
-        settings=settings
+    h5db = createH5Dataset(
+        os.path.join(results_dir, config['load']['h5file'])
     )
-    # [BUG] why reassigning settings?
-    camelyon16.settings['slide_level'] = 7
-    camelyon16.settings['training_centres'] = 0
-    camelyon16.settings['xml_source_fld'] = cam16xmls
-    camelyon16.settings['source_fld'] = cam16fld
-    camelyon16.settings['n_samples'] = 200
 
-    # Monitoring running time... [BUG] this is not the best way
+    c17_cfg = config['camelyon17'];
+    data_dir = config['settings']['data_dir']
+    camelyon17 = Dataset(
+        name='camelyon17',
+        slide_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['source_fld']),
+        xml_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['xml_source_fld']),
+        centres=c17_cfg['training_centres'],
+        logger=logger,
+        settings=config['settings']        # **FIX-ME** possibly overkill
+    )
+
+    ############################################################################
+    # Core processing. Monitoring running time... [BUG] this is not the best way
     start_time = time.time()
-    camelyon16.extract_patches(h5db, results_dir)
+    camelyon17.extract_patches(h5db, results_dir)
     patch_extraction_elapsed = time.time() - start_time
+    #
+    ############################################################################
 
-    # [BUG] camelyon17 is not processed, so why bother?
-    # tot_patches = camelyon16.tum_counter + \
-    #     camelyon16.nor_counter + \
-    #     camelyon17.tum_counter + \
-    #     camelyon17.nor_counter
-    tot_patches = camelyon16.tum_counter +  camelyon16.nor_counter
+    tot_patches = camelyon17.tum_counter +  camelyon17.nor_counter
     time_per_patch = patch_extraction_elapsed / tot_patches
     logger.info('[extract] Total elapsed time: {}'.format(patch_extraction_elapsed))
     logger.info('[extract] Time per patch: {}'.format(time_per_patch))
@@ -95,11 +73,14 @@ def extract(config, results_dir, logger):
 def load(config, results_dir, logger):
     '''Load already extracted patches from an existing HDF5 database'''
 
-    load_settings = config['load']
-    print '[cnn][config] Loading data config: ', load_settings
+    raise ApplicationError('load: pipeline step under revision')
 
-    PWD = load_settings['PWD'] #/home/mara/CAMELYON.exps/dev05/'
-    h5file = load_settings['h5file'] #'0109-1415/patches.hdf5'
+    logger.info('[load] step starting...')
+
+    load_settings = config['load']
+
+    PWD = load_settings['PWD']
+    h5file = load_settings['h5file']
 
     cam16 = hd.File('./data/intermediate_datasets/cam16/patches.hdf5', 'r')
     h5db = hd.File(os.path.join(PWD, h5file), 'r')
@@ -130,7 +111,7 @@ def load(config, results_dir, logger):
     cam16.visititems(list_entries)
     print '[debug][cnn] dblist: ', dblist
 
-    return
+    logger.info('[load] step done!')
 
 
 def train(config, results_dir, logger):
@@ -144,13 +125,16 @@ def train(config, results_dir, logger):
     could use pre-extracted patches to train the model
     '''
 
+    raise ApplicationError('train: pipeline step under revision')
+
+    logger.info('[train] Initialising Horovod...')
     if not HAS_TENSORFLOW:
         logger.warning('[train] bailing out as tensorflow is not available')
         return
 
     tf.set_random_seed(args['seed'])
 
-    print '[parallel][train] Initialising Horovod...'
+    logger.info('[parallel][train] Initialising Horovod...')
     hvd.init()
 
     # Horovod: pin GPU to be used to process local rank (one GPU per process)
