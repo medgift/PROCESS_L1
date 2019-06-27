@@ -61,7 +61,6 @@ from functions import (
     validate_non_neg_int,
     validate_pipeline,
     log_init,
-    wlog
 )
 from pipeline import extract, load, train
 from extract_xml import *
@@ -166,11 +165,9 @@ that some of them can be overridden on the command line, notably:
     gpu-id => GPU
 
 '''
-
-# Config file is parsed _once_ for ever
-# print '[cnn][config] Loading system configurations from: ', CONFIG_FILE
-# All options are now stored in a dict (same structure as for `defaults::def_config`)
-config = parseConfig(CONFIG_FILE, def_config)
+################################################################################
+# init
+################################################################################
 
 # command line options override default and config file's ones
 parser = argparse.ArgumentParser(description='EnhanceR PROCESS_UC1 master script.')
@@ -183,9 +180,15 @@ parser.add_argument(
     help='2-step pipeline'
 )
 parser.add_argument(
+    '-c', '--config-file',
+    dest='config_file',
+    type=str,
+    default=CONFIG_FILE,
+    help='configuration file. Default: see `defaults.CONFIG_FILE`'
+)
+parser.add_argument(
     '-g', '--gpu-id',
     dest='gpu_id',
-    metavar='GPU-ID',
     type=validate_non_neg_int,
     # default=0, # default from config['GPU']
     help='GPU ID to use'
@@ -202,7 +205,6 @@ parser.add_argument(
 parser.add_argument(
     '-s', '--seed',
     dest='seed',
-    metavar='SEED',
     type=int,
     default=0,
     help='Numpy random seed'
@@ -210,7 +212,6 @@ parser.add_argument(
 parser.add_argument(
     '-x', '--xml-ann-file',
     dest='xml_ann_file',
-    metavar='XML-ANNOTATION-FILE',
     type=argparse.FileType('r'),
     help='XML annotation file'
 )
@@ -224,6 +225,10 @@ parser.add_argument(
 
 # easier with a dict
 args = vars(parser.parse_args())
+
+# Config file is parsed _once_ for ever. All options are now stored in a dict
+# (same structure as for `defaults::def_config`)
+config = parseConfig(args['config_file'], def_config)
 
 # prepare results directory
 results_sdir = args['results_sdir'] if args['results_sdir'] else time_stamp.strftime('%m%d-%H%M')
@@ -243,39 +248,31 @@ logger = log_init(
     log_level=args['log_level'],
     log_fname=os.path.join(new_results_dir, 'INFO.log')
 )
-shutil.copy2(src=CONFIG_FILE, dst=new_results_dir)
+shutil.copy2(src=args['config_file'], dst=new_results_dir)
 
 logger.debug(
-    '[cnn][config] saving configuration file ({}) to results dir: {}'.format(CONFIG_FILE, new_results_dir)
+    '[cnn] saving configuration file ({}) to results dir: {}'.format(args['config_file'], new_results_dir)
 )
 
 # conf override, None by args default
 if args['gpu_id']:
     config['settings']['GPU'] = args['gpu_id']
 
-logger.debug('config:\n%s\n' % pp.pformat(config))
-logger.debug('args:\n%s\n' % pp.pformat(args))
+logger.debug('[cnn] config:\n%s\n' % pp.pformat(config))
+logger.debug('[cnn] args:\n%s\n' % pp.pformat(args))
 
 try:
     validate_pipeline(args['pipeline'])
 except argparse.ArgumentTypeError as e:
     sys.exit('[error] invalid pipeline definition: {}\n'.format(e))
 
-
-################################################################################
-# init
-################################################################################
-
-
-################################################################################
-
 single_ann_mode = False
 single_ann_file = args['xml_ann_file'] # open file oject
 if single_ann_file:
     single_ann_mode = True
-    wlog('[cnn][config]', 'single annotation mode. XML file: %s' % single_ann_file.name)
+    logger.info('[cnn]', 'Single annotation mode. XML file: %s' % single_ann_file.name)
 
-wlog('[cnn]', 'Setting random seed: %s' % args['seed'])
+logger.info('[cnn] Setting random seed: %s' % args['seed'])
 np.random.seed(args['seed'])
 
 ################################################################################
@@ -283,7 +280,7 @@ np.random.seed(args['seed'])
 ################################################################################
 
 for step in args['pipeline']:
-    wlog('[cnn]', 'running step: {}'.format(step))
+    logger.info('[cnn] running step: {}'.format(step))
     try:
         eval(step)(config, new_results_dir, logger)
     except Exception as e:

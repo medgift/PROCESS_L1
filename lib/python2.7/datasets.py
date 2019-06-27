@@ -1,15 +1,26 @@
-import os
+import os, glob, re
 from functions import preprocess, load_slide
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 import integral
 import openslide
+import pprint as pp
 
 class Dataset(object):
-    """A camelyon17 dataset
+    """A camelyon17 dataset is structured like:
 
-    ...doc please
+        |-- centre_<CID>
+        |   |-- ...
+        |   |-- patient_<PID>_node_<NID>.tif
+        |   `-- ...
+        | ...
+        `-- lesion_annotations
+            |-- ...
+            |-- patient_<PID>_node_<NID>.xml
+            |-- ...
+
+    ...more doc please
     """
     name = ''
     slide_source_fld = ''
@@ -18,21 +29,41 @@ class Dataset(object):
     tum_counter = 0
     nor_counter = 0
     centers = []
-    settings = {}
-    logger=None
+    config = {}
+    logger = None
+    # filled in at init, mapped from the description above
+    dataset = {
+        # '<CID>' : {
+        #     'path'      : #... to the centre_<CID>/ dir
+        #     'slds_anns' : [
+        #         (<WSI_path>), (<XML_path>), ...
+        #     ]
+        # },
+        # ...
+    }
 
     def count_annotation_files(self):
-        files_counter=0
+        files_counter = 0
         for centre in self.centres:
             annotation_list = self.get_annotation_list(centre)
             files_counter += len(annotation_list)
         return files_counter
 
     def get_annotation_list(self, centre):
+        """Get an XML annotation file list for `centre` (CID).
+
+        Arguments
+        +++++++++
+
+        :param int centre: centre ID
+
+        :return dict()
+        """
         xml_source_fld = self.xml_source_fld
         xml_of_selected_centre = []
         xml_list = os.listdir(xml_source_fld)
         for x in xml_list:
+            self.logger.debug('[datasets] XML file: {}'.format(x))
             identifier = x[-13]
             if centre == 0:
                 if int(identifier)<=1:
@@ -54,7 +85,7 @@ class Dataset(object):
 
     def get_wsi_path(self, centre, xml_file):
         wsi_file = xml_file[:-3]+'tif'
-        self.logger.info('Working with: {}'.format(wsi_file))
+        self.logger.info('Working with (WSI): {}'.format(wsi_file))
 
         #    wsi_file = xml_file[:]
         #    return
@@ -109,13 +140,14 @@ class Dataset(object):
         self.set_files_counter(self.count_annotation_files())
 
         self.logger.info(
-            '[dataset] {0} [extract_patches] {1} total annotation files.'.
+            '[datasets] {0} [extract_patches] {1} total annotation files.'.
             format(self.name, self.files_counter)
         )
 
         for centre in self.centres:
             annotation_list = self.get_annotation_list(centre)
             for xml_file in annotation_list:
+                self.logger.debug('[datasets] XML annotation file: {}'.format(xml_file))
                 slide_path = self.get_wsi_path(centre, xml_file)
                 xml_path = os.path.join(self.xml_source_fld, xml_file)
                 # retrieving the information about the file analysed.
@@ -128,7 +160,6 @@ class Dataset(object):
                 if info['patient']=='008_Mask.tif':
                     continue
                 if xml_path != None: ## add check slide is open and ok
-
                     slide, annotations_mask, rgb_im, im_contour = preprocess(
                         slide_path,
                         xml_path,
@@ -243,7 +274,7 @@ class Dataset(object):
             tum_counter=0,
             nor_counter=0,
             centres=[],
-            settings={},
+            config={},
             logger=None
     ):
         self.name = name
@@ -253,5 +284,33 @@ class Dataset(object):
         self.tum_counter = tum_counter
         self.nor_counter = nor_counter
         self.centres = centres
-        self.settings = settings
+        self.config = config
         self.logger = logger
+
+        # match XML files in 'lesion_annotations/' corresponding
+        # to the TIFFs in 'centre_<CID>/'
+        centre_paths = map(
+            lambda c: slide_source_fld + str(c), centres
+        )
+        # for (c, p) in zip(centers, centre_paths):
+        #     self.dataset[c] = p
+
+        self.dataset = dict(
+            map(
+                lambda cp: (cp[0], { 'path' : cp[1], 'slds_anns' : [] }),
+                zip(centres, centre_paths)
+            )
+        )
+
+        logger.debug('dataset: \n%s' % pp.pformat(self.dataset))
+
+        annots = filter(
+            lambda c: re.search(config['camelyon17']['patient_name_regex'] + '.xml', c),
+            os.listdir(xml_source_fld)
+        )
+        for cdir in centre_paths:
+            slds_anns = []        # for tuples <slide, annotations>
+            slds = filter(
+                lambda c: re.search(config['camelyon17']['patient_name_regex'] + '.tif', c),
+                os.listdir(xml_source_fld)
+            )

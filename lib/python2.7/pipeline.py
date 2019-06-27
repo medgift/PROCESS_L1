@@ -49,7 +49,7 @@ def extract(config, results_dir, logger):
         xml_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['xml_source_fld']),
         centres=c17_cfg['training_centres'],
         logger=logger,
-        settings=config['settings']        # **FIX-ME** possibly overkill
+        config=config        # **FIX-ME** possibly overkill
     )
 
     ############################################################################
