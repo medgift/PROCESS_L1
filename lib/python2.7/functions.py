@@ -1,5 +1,6 @@
 from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, valid_pipelines
 import ConfigParser, io, sys, re
+import pprint as pp
 from argparse import ArgumentTypeError
 from os import listdir, mkdir
 from os.path import join, expanduser
@@ -16,6 +17,7 @@ import h5py as hd
 ################################################################################
 # globals
 debug = False
+conf_debug = False
 logger = None
 ################################################################################
 
@@ -60,7 +62,7 @@ def get_data_val(data_class, centres, db, db16, dblist, rand_patient):
                 else:
                     cam16_idx.append(d)
 
-    print '[debug][get_data_val] Selected patient index for val: ', rand_patient
+    logger.debug('[debug][get_data_val] Selected patient index for val: {}'.format(rand_patient))
     val_idx = pat_idx[rand_patient::10]
     pat_idx = [x for x in pat_idx if x not in val_idx]
     for n in pat_idx:
@@ -108,10 +110,10 @@ def get_dataset_val_split(centres, db, db16, dblist):
     y_tr = np.concatenate([np.zeros((len(nor_patches),1)),np.ones((len(tum_patches),1))]).T[0]
     x_val = np.concatenate([val_nor_patches, val_tum_patches])
     y_val = np.concatenate([np.zeros((len(val_nor_patches),1)),np.ones((len(val_tum_patches),1))]).T[0]
-    print '[debug][functions][get_dataset_val_split] training data shape: ', np.shape(x_tr), np.shape(y_tr)
-    print '[debug][functions][get_dataset_val_split] validation data shape: ', np.shape(x_val), np.shape(y_val)
-    print '[debug][functions][get_dataset_val_split] trining class balance: ', len(nor_patches), len(tum_patches)
-    print '[debug][functions][get_dataset_val_split] val class balance: ', len(val_nor_patches), len(val_tum_patches)
+    logger.debug('training data shape: {}, {}'.format(np.shape(x_tr), np.shape(y_tr)))
+    logger.debug('validation data shape: {}, {}'.format(np.shape(x_val), np.shape(y_val)))
+    logger.debug('trining class balance: {}, {}'.format(len(nor_patches), len(tum_patches)))
+    logger.debug('val class balance: {}, {}'.format(len(val_nor_patches), len(val_tum_patches)))
     return x_tr, y_tr, x_val, y_val
 
 def get_dataset(centres, db, dblist):
@@ -126,7 +128,7 @@ def get_dataset(centres, db, dblist):
     tum_pat_idx, tum_patches = get_data('tumor', centres, db, dblist)
     x = np.concatenate([nor_patches, tum_patches])
     y = np.concatenate([np.zeros((len(nor_patches),1)),np.ones((len(tum_patches),1))]).T[0]
-    print '[debug][functions][get_dataset] loaded data shape: ', np.shape(x), np.shape(y)
+    logger.debug('loaded data shape: {}, {}'.format(np.shape(x), np.shape(y)))
     return x, y
 
 
@@ -144,9 +146,12 @@ def shuffle_data(x, y):
     for i in indexes:
         x_shuffled[counter] = x[i]
         counter += 1
-    print 'Checking the shuffle: '
-    print np.sum(x_shuffled[0]-x[indexes[0]])
-    print y_shuffled[0] - y[indexes[0]]
+    logger.info(
+        'Checking the shuffle: {}, {}'.format(
+            np.sum(x_shuffled[0]-x[indexes[0]]),
+            y_shuffled[0] - y[indexes[0]]
+        )
+    )
     return x_shuffled, y_shuffled
 
 def setDBHierarchy(h5db, settings, info):
@@ -276,7 +281,7 @@ def load_slide(slide_path, slide_level=6, verbose = 0):
     rgba_im= np.array(rgba_im)
     rgb_im = cv2.cvtColor(rgba_im,cv2.COLOR_RGBA2RGB)
     if verbose:
-        print 'Loading: ', slide_path
+        logger.info('Loading: {}'.format(slide_path))
         plt.imshow(rgb_im)
     return rgb_im, slide
 
@@ -284,11 +289,11 @@ def rgb2gray(rgb_im):
     ''' Conversion to greyscale '''
     return cv2.cvtColor(rgb_im,cv2.COLOR_RGB2GRAY)
 
-def gray2otsu(gray_im, verbose = 1):
+def gray2otsu(gray_im, verbose=1):
     ''' Otsu thresholding '''
     otsu_im, o_th = otsu_thresholding(gray_im)
     if verbose:
-        print 'Otsu threshold: ', o_th
+        logger.info('Otsu threshold: {}'.format(o_th))
     return otsu_im
 
 def otsu2morph(otsu_im, verbose = 0):
@@ -347,7 +352,7 @@ def check_data(centre, source_fld, xml_path):
     pwd = source_fld + str(centre) + '/'
     WSI_file = xml_path[:-3]+'tif'
 
-    print 'Workin with: ', WSI_file
+    logger.info('Workin with: {}'.format(WSI_file))
     slide_path = join(pwd,WSI_file)
     return slide_path, None
 
@@ -403,10 +408,25 @@ def parseConfig(configFile, defConfig):
         any, specify the types of comma-splitted `stuff`
         '''
         # t is a stringified type, like 'str'
+        if conf_debug:
+            sys.stderr.write("[debug] stuff={} <=> types={}\n".format(stuff, types))
         tf = lambda t, v: eval(t)(v)
         items = stuff
         if len(types) > 1:
-            items = map(tf, types[1:], stuff.split(','))
+            # supposedly an uniform type list, e.g. all int
+            sstuff = stuff.split(',')
+            stypes = types[1:]
+            dlen = len(sstuff) - len(stypes)
+            if dlen > 0:
+                # more stuff than types, discard some stuff
+                sstuff = sstuff[:dlen+1]
+            elif dlen < 0:
+                stypes = stypes[:dlen]
+
+            try:
+                items = map(tf, stypes, sstuff)
+            except TypeError as e:
+                sys.exit("Configuration mismatch: {} (given values) <=> {} (default types): {}\n".format(stuff, types, e))
 
         return tf(types[0], items)
 
@@ -466,6 +486,7 @@ def parseLoadOptions(configFile):
     return settings
 
 def parseTrainingOptions(configFile):
+    # [BUG] should we review and add any missing option??
     raise AppError, 'Obsoleted by `parseConfig()`'
 
     settings = {}

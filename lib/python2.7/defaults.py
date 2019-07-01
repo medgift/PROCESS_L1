@@ -54,7 +54,8 @@ def_config = {
         # basename for 'centre_<CID>', where <CID>s are listed in `training_centres`
         'source_fld'            : 'data/centre_',               # 'data' is interpolated in `config.ini`
         'xml_source_fld'        : 'data/lesion_annotations',    # (ditto)
-        'training_centres'      : [0, 1, 2, 3],                 # CID list
+        'training_centres'      : [0, 1, 2, 3, 4],              # CID list. Declare *all* of them here,
+                                                                # else type conversion will fail!
         'centre_name_regex'     : 'centre_(?P<CID>\d+)',        # match center ID
         # slide files and annotation files bear names like
         #     patient_<PID>_node_<NID>.{xml, tif}

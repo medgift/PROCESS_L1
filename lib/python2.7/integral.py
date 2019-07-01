@@ -18,7 +18,6 @@ def is_white_patch(cur_patch,white_percentage):
     '''
     #good buttt slowww
     # half black and half white patches are still kept. not a good thing.
-    #print 'into is_white'
     is_white = True
     total_white = float(cur_patch.shape[0] *cur_patch.shape[1] * cur_patch.shape[2] * 255)
     if (cur_patch.sum()/total_white)>white_percentage:
@@ -26,12 +25,15 @@ def is_white_patch(cur_patch,white_percentage):
     else:
         return not is_white
 
-def patch_sampling_using_integral(slide,slide_level,mask,patch_size,patch_num):
-
+def patch_sampling_using_integral(
+        slide, slide_level, mask,patch_size, patch_num,
+        logger=None
+):
     """
-    patch sampling on whole slide image
+    Patch sampling on whole slide image
 
-    input:
+    Arguments
+    +++++++++
 
     slide = OpenSlide Object
     slide_level = level of mask
@@ -39,19 +41,22 @@ def patch_sampling_using_integral(slide,slide_level,mask,patch_size,patch_num):
     patch_size = size of patch scala integer n
     patch_num = the number of output patches
 
+    Keyword arguments
+    +++++++++++++++++
+
+    :param obj logger
+
     output:
 
     list of patches(RGB Image), list of patch point (starting from left top)
-
     """
     patch_list = []  # patches
     patch_point = [] # patch locations
     # taking the nonzero points in the mask
     x_l,y_l = mask.nonzero()
-    #slide_level=7
+
     if len(x_l) > patch_size/slide.level_downsamples[slide_level]*2:
         level_patch_size = int(patch_size/slide.level_downsamples[slide_level])
-        print 'DEBUGGG: ', slide_level
         # computing the actual level of resolution
         # applying the nonzero mask as a dot product
         x_ws = (np.round(x_l*slide.level_downsamples[slide_level])).astype(int)
@@ -61,7 +66,7 @@ def patch_sampling_using_integral(slide,slide_level,mask,patch_size,patch_num):
         white_threshold = .3
         #white_threshold = 1.0
         while(cnt < patch_num) :
-            
+
             # sampling from random distribution
             p_idx = randint(0,len(x_l)-1)
             # picking the random point in the mask
@@ -81,39 +86,40 @@ def patch_sampling_using_integral(slide,slide_level,mask,patch_size,patch_num):
             area_percent = float(ii_sum)/(level_patch_size**2)
             # checking if the total area of the patch covers at least 80% of
             # the annotation region
-            
-            if area_percent<0.6:
+
+            if area_percent < 0.6:
                 continue
 
             if cnt > patch_num*10+1000:
-                print "There is no more patches to extract in this slide"
-                print "mask region is too small"
-                print "final number of patches : ",len(patch_list)
-
+                # is this rather a warning?
+                logger.info(
+                    "[integral] No more patches to extract in this slide, or" +
+                    "mask region is too small. " +
+                    "Final number of patches: {}".format(len(patch_list))
+                )
                 break
 
-            patch=slide.read_region((y_ws[p_idx],x_ws[p_idx]),0,(patch_size,patch_size))
+            patch = slide.read_region((y_ws[p_idx],x_ws[p_idx]),0,(patch_size,patch_size))
             patch = np.array(patch)
-            #print '[integral] np.sum(patch): ', np.sum(patch)
-            
-            if np.sum(patch)==0:
-                print('[integral] AaAaAH its zeroo!!')
+
+            if np.sum(patch) == 0:
+                logger.info('[integral] AaAaAH its zeroo!!')
                 continue
-            
+
             white_mask = patch[:,:,0:3] > 200
-            
+
             if float(np.sum(white_mask))/(patch_size**2*3) <= white_threshold :
-                #if True:
-                if np.sum(patch)>0:
+                if np.sum(patch) > 0:
                     # adding the patch to the patches list
                     patch_list.append(cv2.cvtColor(patch,cv2.COLOR_RGBA2BGR))
                     # adding the patch location to the list
                     patch_point.append((x_l[p_idx],y_l[p_idx]))
                     cnt += 1 # increasing patch counter
                 else:
-                    print 'This is a black patch!'
+                    logger.info('[integral] This is a black patch!')
             else:
                 nt_cnt += 1
+                # Should we keep and log-report this below?
                 #print 'white_mask sum: ', np.sum(white_mask)
                 #print 'white ratio: ', float(np.sum(white_mask))/(patch_size**2*3)
                 #print 'Rejected location: {0},{1}'.format(x_l[p_idx],y_l[p_idx])
@@ -122,13 +128,17 @@ def patch_sampling_using_integral(slide,slide_level,mask,patch_size,patch_num):
                 if white_threshold < .7:
                     white_threshold += .05
                     nt_cnt = 1
-                    print 'Increasing white_threshold of 0.05: ', white_threshold
+                    logger.info(
+                        '[integral] Increasing white_threshold of 0.05, now at: {}'.format(white_threshold)
+                    )
                 else:
-                    print 'No more patches to extract that have more than 30 percent of not white content'
+                    logger.info(
+                        '[integral] No more patches to extract that have more than 30 percent of not white content'
+                    )
                     break
 
-    def_pl=[]
-    def_pp=[]
+    def_pl = []
+    def_pp = []
 
     for i in range(len(patch_list)):
         if (np.sum(patch_list[i])>0) and (np.mean(patch_list[i])>90):
@@ -182,17 +192,11 @@ def tumor_patch_sampling_using_centerwin(slide,slide_level,mask,patch_size,patch
             win_y = cntr_y-window_size/2
 
             t_window = level_patch_mask[win_x:(win_x+window_size),win_y:(win_y+window_size)]
-            #print level_patch_mask.shape
-            #print win_x
-            #print win_y
 
             #apply integral to window
             ii_map = integral_image(t_window)
-            #print t_window.shape
             ii_sum = integrate(ii_map,(0,0),(window_size-1,window_size-1))
             area_percent = float(ii_sum)/(window_size**2)
-           # print "integral_area: ",area_percent
-           # print "loop count: ",cnt
 
             if area_percent <1.0:
                 continue
