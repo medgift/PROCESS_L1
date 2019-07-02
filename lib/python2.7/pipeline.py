@@ -1,4 +1,5 @@
 import time, os
+import h5py as hd
 
 from functions import (
     wlog
@@ -37,35 +38,34 @@ def extract(config, results_dir, logger):
     from functions import createH5Dataset
     from datasets import Dataset
 
-    h5db = createH5Dataset(
-        os.path.join(results_dir, config['load']['h5file'])
-    )
+    # no h5db operation here, all done inside Dataset, so instantiate the DB in there
 
     c17_cfg = config['camelyon17'];
     data_dir = config['settings']['data_dir']
-    camelyon17 = Dataset(
+
+    with Dataset(
         name='camelyon17',
         slide_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['source_fld']),
         xml_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['xml_source_fld']),
         centres=c17_cfg['training_centres'],
+        results_dir=results_dir,
+        h5db_path=os.path.join(results_dir, config['load']['h5file']),
         logger=logger,
         config=config        # **FIX-ME** possibly overkill
-    )
+    ) as c17_dset:
+        ############################################################################
+        # Core processing. Monitoring running time... [BUG] this is not the best way
+        start_time = time.time()
+        c17_dset.extract_patches()
+        patch_extraction_elapsed = time.time() - start_time
+        #
+        ############################################################################
 
-    ############################################################################
-    # Core processing. Monitoring running time... [BUG] this is not the best way
-    start_time = time.time()
-    camelyon17.extract_patches(h5db, results_dir)
-    patch_extraction_elapsed = time.time() - start_time
-    #
-    ############################################################################
+        tot_patches = c17_dset.tum_counter +  c17_dset.nor_counter
 
-    tot_patches = camelyon17.tum_counter +  camelyon17.nor_counter
     time_per_patch = patch_extraction_elapsed / tot_patches
     logger.info('[extract] Total elapsed time: {}'.format(patch_extraction_elapsed))
     logger.info('[extract] Time per patch: {}'.format(time_per_patch))
-
-    h5db.close()
 
     logger.info('[extract] step done!')
 

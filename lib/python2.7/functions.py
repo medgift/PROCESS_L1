@@ -42,6 +42,7 @@ def getInfoFromXml(xml_path, centre):
     return info
 
 def createH5Dataset(dataset_file_path):
+    # [BUG] there's no dataset created here, so pretty useless
     return hd.File(dataset_file_path, "w")
 
 

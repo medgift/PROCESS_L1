@@ -6,6 +6,7 @@ import cv2
 from integral import patch_sampling_using_integral
 import openslide
 import pprint as pp
+import h5py as hd
 
 class Dataset(object):
     """A camelyon17 dataset is structured like:
@@ -31,19 +32,13 @@ class Dataset(object):
     name = ''
     slide_source_fld = ''
     xml_source_fld = ''
+    results_dir = ''
+    h5db_path=''
+    h5db_tree_def = '{}/level{}/centre{}/patient{}/node{}'
     files_counter = 0
     tum_counter = 0
     nor_counter = 0
     centres = []        # declare which centres to use in [0, 4]
-    _centre_ranges = [
-        # <CID>-indexed centre to patient static mapping
-        #   (<start>, <end>), (...)
-        range(0, 19),
-        range(20, 39),
-        range(40, 59),
-        range(60, 79),
-        range(80, 99),
-    ]
     config = {}
     logger = None
     # filled in at init, mapped from the description above
@@ -59,22 +54,66 @@ class Dataset(object):
         # ...
     ]
 
+    img_fname_prefix = 'level{}_centre{}_patient{}_node{}'
+
+    # pseudo private
+    _h5db=None
+    _centre_ranges = [
+        # <CID>-indexed centre to patient static mapping
+        #   (<start>, <end>), (...)
+        range(0, 19),
+        range(20, 39),
+        range(40, 59),
+        range(60, 79),
+        range(80, 99),
+    ]
+
+    def get_image_fname(self, suffix, info={}):
+        """Get an image file name composed of
+
+             <self.results_dir>/<self.img_fname_prefix>_<suffix>
+
+        where <self.img_fname_prefix> has placeholders for values in the
+        `info` dict.
+
+        :param  str directory: path to the results directory
+
+        :param  str suffix: specific image suffix
+
+        :param  dict info: must have keys
+
+                'centre'    : <CID>,
+                'patient'   : '<PID>',
+                'node'      : '<NID>'
+
+        :return str: something like:
+
+             results_dir/level<slide_level>_centre<CID>_patient<PID>_node<NID>_<suffix>
+        """
+        return os.path.join(
+            self.results_dir,
+            (self.img_fname_prefix + '_' + suffix).format(
+                self.config['settings']['slide_level'],
+                info['centre'],
+                info['patient'],
+                info['node']
+            )
+        )
+
     def pid2cid(self, pid):
-        """Return the 'centre' ID corresponding to an 'patient' ID (static
+        """Return the 'centre' ID corresponding to a 'patient' ID (static
         mapping).
 
         :param int pid: patient ID in [0,99]
 
-        :return int: the centre ID
+        :return int: the centre ID, or None if CID is not in `self.centres`
         """
         if pid > 99 or pid < 0:
             raise ValueError('{}: PID is outside range [0, 99]'.format(pid))
 
         cid = pid/20
-        if cid not in self.centres:
-            raise ValueError('{}: CID is outside requested range {}'.format(cid, self.centres))
 
-        return cid
+        return cid if cid in self.centres else None
 
     def cid2pid(self, cid):
         """Return the 'patient' ID range corresponding to a 'centre' ID (static
@@ -91,6 +130,8 @@ class Dataset(object):
 
 
     def count_annotation_files(self):
+        raise AppError, 'Obsoleted by `get_patients()`'
+
         files_counter = 0
         for centre in self.centres:
             annotation_list = self.get_annotation_list(centre)
@@ -109,10 +150,14 @@ class Dataset(object):
     def get_annotation_list(self, centre):
         """Get an XML annotation file list for `centre` (CID).
 
+        **Obsoleted by `get_patients()`**
+
         :param int centre: centre ID
 
         :return list: a list of
         """
+        raise AppError, 'Obsoleted by `get_patients()`'
+
         xml_source_fld = self.xml_source_fld
         xml_of_selected_centre = []
         xml_list = os.listdir(xml_source_fld)
@@ -202,27 +247,20 @@ class Dataset(object):
             'node'      : self.get_nid(patient),
         }
 
-    def store(self, h5db, info, patch_array, patch_point, tissue_type):
-        h5db[
-            '{}/level{}/centre{}/patient{}/node{}/patches'.format(
-                tissue_type,
-                self.config['settings']['slide_level'],
-                info['centre'],
-                info['patient'],
-                info['node']
-            )
-        ] = patch_array
-        h5db[
-            '{}/level{}/centre{}/patient{}/node{}/locations'.format(
-                tissue_type,
-                self.config['settings']['slide_level'],
-                info['centre'],
-                info['patient'],
-                info['node']
-            )
-        ] = patch_point
 
-    def extract_patches(self, h5db, new_folder):
+    def store(self, info, patch_array, patch_point, tissue_type):
+        tree_path = self.h5db_tree_def.format(
+            tissue_type,
+            self.config['settings']['slide_level'],
+            info['centre'],
+            info['patient'],
+            info['node']
+        )
+        self._h5db[tree_path + '/' + 'patches'] = patch_array
+        self._h5db[tree_path + '/' + 'locations'] = patch_point
+
+
+    def extract_patches(self):
         """
         (doc please)
         """
@@ -261,13 +299,13 @@ class Dataset(object):
                 tum_patch_array = np.asarray(tum_patch_list)
                 tum_locations = np.array(tum_patch_point)
                 # store it
-                self.store(h5db, info, tum_patch_array, tum_locations, 'tumor')
+                self.store(info, tum_patch_array, tum_locations, 'tumor')
 
                 # reverting the tumor mask to find normal tissue and extract patches
                 #    Note :
                 #    normal_mask = tissu mask(morp_im) - tummor mask(annotations_mask)
 
-                ##### restart from here ##
+                ##### [BUG] ??? restart from here ##
 
                 morp_im = get_morp_im(rgb_im)
                 normal_im = morp_im - annotations_mask  ## np.min(normal_im) := -1.0
@@ -284,63 +322,37 @@ class Dataset(object):
                 )
                 nor_patch_array = np.asarray(nor_patch_list)
                 normal_patches_locations = np.array(nor_patch_point)
-                # storing the normal patches and their locations
-                self.store(h5db, info, nor_patch_array, nor_patch_point, 'normal')
+                self.store(info, nor_patch_array, nor_patch_point, 'normal')
 
-
-                ''' Visualisation '''
-
-                # plotting the tumor locations in the XML file
-                # Drawing the normal patches sampling points
-                # tumor_locations.png shows the tumor patches locations in red
-                # and the normal patches locations in green
+                # plotting the tumor locations in the XML file Drawing the
+                # normal patches sampling points tumor_locations.png shows the
+                # tumor patches locations in red and the normal patches
+                # locations in green
                 tumor_locations_im = rgb_im
                 plt.figure()
                 plt.imshow(tumor_locations_im)
-                for p_x,p_y in normal_patches_locations:
+                for p_x, p_y in normal_patches_locations:
                     plt.scatter(p_y, p_x, c='g')
                     #cv2.circle(tumor_locations_im,(p_y,p_x),30,(0,255,0),10)
-                for p_x,p_y in tum_locations:
+                for p_x, p_y in tum_locations:
                     plt.scatter(p_y, p_x, c='r')
                     #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
 
-                img_file = os.path.join(
-                    new_folder, 'level{}_centre{}_patient{}_node{}_tumor_locations.png'.format(
-                        settings['slide_level'],
-                        info['centre'],
-                        info['patient'],
-                        info['node']
-                    )
-                )
+                img_file = self.get_image_fname('tumor_locations.png', info)
                 plt.savefig(img_file)
                 plt.close()
                 self.logger.info('Tumor locations image saved to: {}'.format(img_file))
 
                 plt.figure()
                 plt.imshow(annotations_mask)
-                img_file = os.path.join(
-                        new_folder,
-                    'level{}_centre{}_patient{}_node{}_annotation_mask.png'.format(
-                        settings['slide_level'],
-                        info['centre'],
-                        info['patient'],
-                        info['node']
-                    )
-                )
+                img_file = self.get_image_fname('annotation_mask.png', info)
                 plt.savefig(img_file)
                 plt.close()
                 self.logger.info('Annotation mask and normal tissue mask saved to: {}'.format(img_file))
 
                 plt.figure()
                 plt.imshow(normal_im)
-                img_file = os.path.join(
-                    new_folder,
-                    'level{}_centre{}_patient{}_node{}_normal_tissue_mask.png'.format(
-                        settings['slide_level'],
-                        info['centre'],
-                        info['patient'],
-                        info['node'])
-                )
+                img_file = self.get_image_fname('normal_tissue_mask.png', info)
                 plt.savefig(img_file)
                 plt.close()
                 self.logger.info('Normal tissue mask saved to: {}'.format(img_file))
@@ -355,6 +367,8 @@ class Dataset(object):
             name='',
             slide_source_fld='',
             xml_source_fld='',
+            results_dir='',
+            h5db_path='',
             files_counter=0,
             tum_counter=0,
             nor_counter=0,
@@ -365,12 +379,16 @@ class Dataset(object):
         self.name = name
         self.slide_source_fld = slide_source_fld
         self.xml_source_fld = xml_source_fld
+        self.results_dir = results_dir
+        self._h5db_path=h5db_path,
         self.files_counter = files_counter
         self.tum_counter = tum_counter
         self.nor_counter = nor_counter
         self.centres = centres
         self.config = config
         self.logger = logger
+
+        self._h5db = hd.File(h5db_path, "w")
 
         centre_paths = map(
             lambda c: slide_source_fld + str(c), centres
@@ -402,6 +420,11 @@ class Dataset(object):
             # look for corresponding slides
             cid = self.pid2cid(pid)
             logger.debug('PID: {} => CID={}'.format(pid, cid))
+
+            if cid == None:
+                logger.info('{}: skipping XML annotation file name -- not in our centres range'.format(xml))
+                continue
+
             for sld in filter(
                 lambda c: re.search(config['camelyon17']['patient_name_regex'] + '.tif', c),
                 os.listdir(self.dataset[cid]['path'])
@@ -413,7 +436,7 @@ class Dataset(object):
                     nid = int(match.group('NID'))
                     logger.debug('TIF: {}: PID={}, NID={}'.format(sld, pid, nid))
                 except Exception as e:
-                    logger.warn('{}: skipping malformatted WSI annotation file name'.format(sld))
+                    logger.warn('{}: skipping malformatted WSI file name'.format(sld))
 
                 pid_nid = '%03d_%d' % (pid, nid)
                 self.dataset[cid]['patients'][pid_nid] = (
@@ -422,3 +445,9 @@ class Dataset(object):
                 )
 
         logger.debug('dataset: \n%s' % pp.pformat(self.dataset))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._h5db.close()

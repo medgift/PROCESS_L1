@@ -1,0 +1,42 @@
+#!/bin/bash -l
+# -*- mode: shell-script -*-
+################################################################################
+# runner-slurm_rnd_seed: cnn runner for SLURM with random seed --
+# proof-of-concept for testing parallel patch extraction as patch coordinates
+# are sampled over a uniform distribution
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+## Job name
+#SBATCH -J cnn-extaction_rnd_seed
+## Number of allocated nodes
+#SBATCH -N 1
+## Number of tasks per node (by default this corresponds to the number of cores allocated per node)
+#SBATCH --ntasks-per-node=1
+## Memory allocated per core (default is 5GB)
+#SBATCH --mem-per-cpu=1GB
+## Max task execution time (format is HH:MM:SS)
+#SBATCH --time=01:00:00
+## Name of grant to which resource usage will be charged
+#SBATCH -A process2
+## Name of partition
+#SBATCH -p plgrid-testing
+## Name of file to which standard output will be redirected
+#SBATCH --output="output.out"
+## Name of file to which the standard error stream will be redirected
+#SBATCH --error="error.err"
+
+echo >&2 "[WARN] Test runner: some modules won't be loaded -- only for patch extraction"
+
+# Note: env unset == False, anything else == True (avoid setting '0' for False)
+PROCESS_UC1__HAS_SKIMAGE_VIEW=
+PROCESS_UC1__HAS_TENSORFLOW=
+
+export PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
+
+# rewrite as job array
+
+echo "[BUG] not yet implemented" >&2
+exit 1

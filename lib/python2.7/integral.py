@@ -26,7 +26,7 @@ def is_white_patch(cur_patch,white_percentage):
         return not is_white
 
 def patch_sampling_using_integral(
-        slide, slide_level, mask,patch_size, patch_num,
+        slide, slide_level, mask, patch_size, patch_num,
         logger=None
 ):
     """
@@ -148,7 +148,9 @@ def patch_sampling_using_integral(
     return def_pl, def_pp
 
 
-def tumor_patch_sampling_using_centerwin(slide,slide_level,mask,patch_size,patch_num):
+def tumor_patch_sampling_using_centerwin(
+        slide, slide_level, mask, patch_size, patch_num
+):
     """
     tumor patch sampling using center window
     plz input the only tumor mask
