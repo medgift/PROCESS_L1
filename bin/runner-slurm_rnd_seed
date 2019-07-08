@@ -20,34 +20,69 @@
 #SBATCH --time=01:00:00
 #SBATCH --account=process2
 #SBATCH --partition=plgrid-testing
-#SBATCH --array=0-9
+#SBATCH --array=0-1
 #SBATCH --error=%x-%A_%3a.err
 #SBATCH --output=%x-%A_%3a.out
 ################################################################################
 # Job conf
+# Env:
+#   $HOME      == $PLG_USER_STORAGE
+#   $SCRATCH   == $PLG_USER_SCRATCH  == $PLG_USER_SCRATCH_SHARED
+#                 $PLG_GROUPS_STORAGE == $PLG_GROUPS_SHARED
+################################################################################
+TSTAMP=$(date '+%m%d')
 PROJECT=PROCESS_UC1
+PROJECT_STORAGE=${PLG_GROUPS_STORAGE}/plggprocess/UC1
+CONF_DIR=${PROJECT_STORAGE}/conf
+DATA_DIR=${PROJECT_STORAGE}/datasets/camelyon17/dev_data
 SLURM_SUBMIT_DIR=${SCRATCH}/slurm_jobdir/${PROJECT}
-CONF_DIR=${SCRATCH}/slurm_jobdir/${PROJECT}/conf    # MUST BE THERE
-DATA_DIR=${SCRATCH}/slurm_jobdir/${PROJECT}/data    # ditto... with datasets in it
-RESULTS_DIR=${SCRATCH}/slurm_jobdir/${PROJECT}/results
+RESULTS_DIR=${SLURM_SUBMIT_DIR}/results/${SLURM_JOB_NAME}
 
 mkdir -p $RESULTS_DIR
+echo 'Directory names: <MMDD>.<slurm-job-id>.<slurm-task-id>' > ${RESULTS_DIR}/README
+
+run_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
+srun_id=${SLURM_ARRAY_JOB_ID}.${run_id}
+myself=${SLURM_JOB_NAME}.${srun_id}
+results_sdir=${TSTAMP}.${srun_id}
+
+################################################################################
+# modules
+################################################################################
+mods="
+plgrid/tools/python/2.7.14
+plgrid/libs/openslide/3.4.1
+"
+
+errs=0
+for m in $mods; do
+    module load $m || {
+        echo 2>&1 "[ERROR] ${myself}: $m: can't load module"
+        ((errs++))
+    }
+done
+
+[[ $errs -gt 0 ]] && exit $errs
 
 ################################################################################
 # Start job
 ################################################################################
+echo >&2 "[WARN] ${myself}: some modules won't be loaded -- only for patch extraction"
 
-echo >&2 "[WARN] Test runner: some modules won't be loaded -- only for patch extraction"
-
+PYTHONPATH=${HOME}/projects/EnhanceR/${PROJECT}/code/${PROJECT}/lib/python2.7
 # Note: env unset == False, anything else == True (avoid setting '0' for False)
 PROCESS_UC1__HAS_SKIMAGE_VIEW=
 PROCESS_UC1__HAS_TENSORFLOW=
 
-export PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
+export PYTHONPATH PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
-# rewrite as job array
+# no container support for now, take stuff under ~/myroot/bin + Git clone dir
+cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-sdir=${results_sdir} --seed=${run_id} --log-level=debug extract"
 
-WIP...
+echo -e "[INFO] ${myself}: command line:\n    ${cmnd}"
+eval $cmnd
 
-echo "[BUG] not yet implemented" >&2
-exit 1
+################################################################################
+# accounting stats
+################################################################################
+sstat -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,ConsumedEnergy

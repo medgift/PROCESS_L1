@@ -45,8 +45,8 @@ def extract(config, results_dir, logger):
 
     with Dataset(
         name='camelyon17',
-        slide_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['source_fld']),
-        xml_source_fld=os.path.join(data_dir, 'camelyon17', c17_cfg['xml_source_fld']),
+        slide_source_fld=os.path.join(data_dir, c17_cfg['source_fld']),
+        xml_source_fld=os.path.join(data_dir, c17_cfg['xml_source_fld']),
         centres=c17_cfg['training_centres'],
         results_dir=results_dir,
         h5db_path=os.path.join(results_dir, config['load']['h5file']),
