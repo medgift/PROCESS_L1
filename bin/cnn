@@ -69,7 +69,7 @@ if HAS_TENSORFLOW:
     from models import *
 ###############################################################################
 '''
-cnn.py -- EnahnceR PROCESS_UC1 launch script
+cnn -- EnahnceR PROCESS_UC1 launch script
 
 Usage
 =====
@@ -77,7 +77,7 @@ Usage
 High resolution patch extraction
 --------------------------------
 
-    $ bin/cnn.py [OPTIONS] [STEP1 [STEP2...]]
+    $ bin/cnn [OPTIONS] [STEP1 [STEP2...]]
 
 
 Options
@@ -86,7 +86,7 @@ Options
     --gpu-id, -g N
         (int>=0). Force GPU ID to use. Default '0'.
 
-    --xml-ann-file, -x XML_ANNOTATION_FILE
+    --patients, -p XML_ANNOTATION_FILE
         (str). Path to a single XML annotation file. If given a single WSI slide will
         be processed for any configured 'centre'. Default: None -- will scan data input dir.
 
@@ -123,7 +123,7 @@ Patch extraction
 
 Just run:
 
-    $ bin/cnn.py [OPTIONS]
+    $ bin/cnn [OPTIONS]
 
 
 Network training
@@ -132,12 +132,12 @@ Network training
 
 Extract patches and train:
 
-    $ bin/cnn.py [OPTIONS] train
+    $ bin/cnn [OPTIONS] train
 
 
 Load patches and train:
 
-    $ bin/cnn.py [OPTIONS] load train
+    $ bin/cnn [OPTIONS] load train
 
 
 Program output
@@ -210,10 +210,11 @@ parser.add_argument(
     help='Numpy random seed'
 )
 parser.add_argument(
-    '-x', '--xml-ann-file',
-    dest='xml_ann_file',
-    type=argparse.FileType('r'),
-    help='XML annotation file'
+    '-p', '--patients',
+    dest='patients',
+    nargs='*',
+    type=str,
+    help='Patient list. Each item must match `[camelyon17] => patient_name_regex` in config file'
 )
 parser.add_argument(
     '-r', '--results-sdir',
@@ -266,11 +267,10 @@ try:
 except argparse.ArgumentTypeError as e:
     sys.exit('[error] invalid pipeline definition: {}\n'.format(e))
 
-single_ann_mode = False
-single_ann_file = args['xml_ann_file'] # open file oject
-if single_ann_file:
-    single_ann_mode = True
-    logger.info('[cnn]', 'Single annotation mode. XML file: %s' % single_ann_file.name)
+# try:
+#     validate_patient(args['patients'], config[])
+# except argparse.ArgumentTypeError as e:
+#     sys.exit('[error] invalid patients names: {}\n'.format(e))
 
 logger.info('[cnn] Setting random seed: %s' % args['seed'])
 np.random.seed(args['seed'])
@@ -282,7 +282,7 @@ np.random.seed(args['seed'])
 for step in args['pipeline']:
     logger.info('[cnn] running step: {}'.format(step))
     try:
-        eval(step)(config, new_results_dir, logger)
+        eval(step)(config, new_results_dir, logger=logger, patients=args['patients'])
     except Exception as e:
         logger.debug(traceback.format_exc())
         sys.exit('[cnn] {}: pipeline step failed: {} '.format(step, e))

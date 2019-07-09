@@ -29,8 +29,7 @@ def patch_sampling_using_integral(
         slide, slide_level, mask, patch_size, patch_num,
         logger=None
 ):
-    """
-    Patch sampling on whole slide image
+    """Patch sampling on whole slide image
 
     Arguments
     +++++++++
@@ -44,54 +43,60 @@ def patch_sampling_using_integral(
     Keyword arguments
     +++++++++++++++++
 
-    :param obj logger
+    :param obj logger: a pymod:logging instance
 
-    output:
-
-    list of patches(RGB Image), list of patch point (starting from left top)
+    return: list of patches (RGB images), list of patch point (starting from left top)
     """
-    patch_list = []  # patches
-    patch_point = [] # patch locations
+    patch_list = []
+    patch_point = []
     # taking the nonzero points in the mask
-    x_l,y_l = mask.nonzero()
+    x_l, y_l = mask.nonzero()
 
-    if len(x_l) > patch_size/slide.level_downsamples[slide_level]*2:
-        level_patch_size = int(patch_size/slide.level_downsamples[slide_level])
+    # [BUG] Why no else branch?
+    if len(x_l) > patch_size / slide.level_downsamples[slide_level] * 2:
+        level_patch_size = int(patch_size / slide.level_downsamples[slide_level])
         # computing the actual level of resolution
         # applying the nonzero mask as a dot product
-        x_ws = (np.round(x_l*slide.level_downsamples[slide_level])).astype(int)
-        y_ws = (np.round(y_l*slide.level_downsamples[slide_level])).astype(int)
+        x_ws = (np.round(x_l * slide.level_downsamples[slide_level])).astype(int)
+        y_ws = (np.round(y_l * slide.level_downsamples[slide_level])).astype(int)
         cnt = 0 # patch counter
         nt_cnt = 1 # not taken counter
+        # [BUG] should this configurable?
         white_threshold = .3
         #white_threshold = 1.0
-        while(cnt < patch_num) :
-
+        while(cnt < patch_num):
             # sampling from random distribution
-            p_idx = randint(0,len(x_l)-1)
+            p_idx = randint(0, len(x_l) - 1)
             # picking the random point in the mask
-            level_point_x,level_point_y = x_l[p_idx], y_l[p_idx]
+            level_point_x, level_point_y = x_l[p_idx], y_l[p_idx]
             if (level_point_y < 50) or (level_point_x < 250): ##new add to check
                 continue
             # check the boundary to make patch
-            check_bound = np.resize(np.array([level_point_x+level_patch_size,level_point_y+level_patch_size]),(2,))
+            check_bound = np.resize(
+                np.array(
+                    [level_point_x + level_patch_size, level_point_y + level_patch_size]
+                ), (2,)
+            )
             if check_bound[0] > mask.shape[0] or check_bound[1] > mask.shape[1]:
                 continue
             # make patch from mask image
-            level_patch_mask = mask[int(level_point_x):int(level_point_x+level_patch_size),int(level_point_y):int(level_point_y+level_patch_size)]
+            level_patch_mask = mask[
+                int(level_point_x):int(level_point_x+level_patch_size),
+                int(level_point_y):int(level_point_y+level_patch_size)
+            ]
 
             # apply integral
             ii_map = integral_image(level_patch_mask)
-            ii_sum = integrate(ii_map,(0,0),(level_patch_size-1,level_patch_size-1))
-            area_percent = float(ii_sum)/(level_patch_size**2)
+            ii_sum = integrate(ii_map, (0, 0), (level_patch_size - 1, level_patch_size - 1))
+            area_percent = float(ii_sum) / (level_patch_size**2)
             # checking if the total area of the patch covers at least 80% of
             # the annotation region
-
+            # [BUG] configurable? It's currently NOT 80%!
             if area_percent < 0.6:
                 continue
 
-            if cnt > patch_num*10+1000:
-                # is this rather a warning?
+            if cnt > patch_num * 10 + 1000:
+                # [BUG] is this rather a warning?
                 logger.info(
                     "[integral] No more patches to extract in this slide, or" +
                     "mask region is too small. " +
@@ -99,7 +104,7 @@ def patch_sampling_using_integral(
                 )
                 break
 
-            patch = slide.read_region((y_ws[p_idx],x_ws[p_idx]),0,(patch_size,patch_size))
+            patch = slide.read_region((y_ws[p_idx], x_ws[p_idx]), 0, (patch_size, patch_size))
             patch = np.array(patch)
 
             if np.sum(patch) == 0:
@@ -108,25 +113,27 @@ def patch_sampling_using_integral(
 
             white_mask = patch[:,:,0:3] > 200
 
-            if float(np.sum(white_mask))/(patch_size**2*3) <= white_threshold :
+            if float(np.sum(white_mask))/(patch_size**2*3) <= white_threshold:
                 if np.sum(patch) > 0:
-                    # adding the patch to the patches list
-                    patch_list.append(cv2.cvtColor(patch,cv2.COLOR_RGBA2BGR))
-                    # adding the patch location to the list
-                    patch_point.append((x_l[p_idx],y_l[p_idx]))
-                    cnt += 1 # increasing patch counter
+                    # got a good one...
+                    patch_list.append(cv2.cvtColor(patch, cv2.COLOR_RGBA2BGR))
+                    # ...location
+                    patch_point.append((x_l[p_idx], y_l[p_idx]))
+                    cnt += 1
                 else:
                     logger.info('[integral] This is a black patch!')
             else:
+                # got a bad one
                 nt_cnt += 1
                 # Should we keep and log-report this below?
                 #print 'white_mask sum: ', np.sum(white_mask)
                 #print 'white ratio: ', float(np.sum(white_mask))/(patch_size**2*3)
                 #print 'Rejected location: {0},{1}'.format(x_l[p_idx],y_l[p_idx])
 
-            if nt_cnt %1000 == 0:
+            if nt_cnt % 1000 == 0:
                 if white_threshold < .7:
                     white_threshold += .05
+                    # [BUG] why reset to 1?
                     nt_cnt = 1
                     logger.info(
                         '[integral] Increasing white_threshold of 0.05, now at: {}'.format(white_threshold)
@@ -141,7 +148,7 @@ def patch_sampling_using_integral(
     def_pp = []
 
     for i in range(len(patch_list)):
-        if (np.sum(patch_list[i])>0) and (np.mean(patch_list[i])>90):
+        if (np.sum(patch_list[i]) > 0) and (np.mean(patch_list[i]) > 90):
             def_pl.append(patch_list[i])
             def_pp.append(patch_point[i])
 

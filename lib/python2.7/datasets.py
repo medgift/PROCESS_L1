@@ -1,5 +1,5 @@
 import os, glob, re
-from functions import preprocess, load_slide, get_morp_im
+from functions import preprocess, get_morp_im
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -30,6 +30,7 @@ class Dataset(object):
         CID := 4 => slides for patients PID in [080, 099]
     """
     name = ''
+    patients = []
     slide_source_fld = ''
     xml_source_fld = ''
     results_dir = ''
@@ -356,6 +357,7 @@ class Dataset(object):
                 plt.savefig(img_file)
                 plt.close()
                 self.logger.info('Normal tissue mask saved to: {}'.format(img_file))
+
                 plt.close('all')
 
                 self.tum_counter += len(tum_patch_array)
@@ -365,6 +367,7 @@ class Dataset(object):
     def __init__(
             self,
             name='',
+            patients=[],
             slide_source_fld='',
             xml_source_fld='',
             results_dir='',
@@ -377,6 +380,7 @@ class Dataset(object):
             logger=None
     ):
         self.name = name
+        self.patients = patients,
         self.slide_source_fld = slide_source_fld
         self.xml_source_fld = xml_source_fld
         self.results_dir = results_dir
@@ -399,6 +403,13 @@ class Dataset(object):
                 zip(centres, centre_paths)
             )
         )
+
+        # validate patient names
+        errs = 0
+        for patient in self.patients:
+            if not re.match(config['camelyon17']['patient_name_regex'], patient):
+                errs += 1
+                @@@@ HERE @@@@
 
         # filter our unwanted content
         annots = filter(

@@ -5,68 +5,77 @@ import numpy as np
 from openslide import OpenSlide
 import collections
 
-def make_list_of_contour_from_xml(fn_xml,downsample):
-    """
-        make the list of contour from xml(annotation file)
-        input:
-        fn_xml = file name of xml file
-        downsample = disired resolution
+def make_list_of_contour_from_xml(fn_xml, downsample):
+    """Make a (tumor's) countour list (coordinates) from an XML annotation file
 
-        var:
-        li_li_point = list of tumors
-        li_point = the coordinates([x,y]) of a tumor
+    input:
 
-        return  list of list (2D array list)
+    fn_xml = file name of xml file
+    downsample = desired resolution
+
+    return: list (tumors) of list (tumor's coordinate) -- 2D array
+
+        [
+            [ # tumor0 coordinates
+                [x0, y0],
+                [x1, y2],
+                ...
+            ],
+            [ # tumor1 coordinates
+                ...
+            ],
+            ...
+        ]
     """
-    li_li_point = []
+    li_li_point = [] # list of tumors
     tree = parse(fn_xml)
     for parent in tree.getiterator():
         for i_1, child1 in enumerate(parent):
             for i_2, child2 in enumerate(child1):
                 for i_3, child3 in enumerate(child2):
-                    li_point=[]
+                    li_point=[] # tumor coordinates
                     for i_4, child4 in enumerate(child3):
                         x_0 = float(child4.attrib['X'])
                         y_0 = float(child4.attrib['Y'])
                         x_s = x_0/downsample
                         y_s = y_0/downsample
-                        li_point.append([x_s,y_s])
+                        li_point.append([x_s, y_s])
                     if len(li_point):
                         li_li_point.append(li_point)
     return li_li_point
 
 def convert_list_of_contour_2_opencv_contours(li_li_point):
-    """
-        conver list of contour(2D list array) to opencv contours
-        that list of nparray (not 2-d nparray !)
+    """Convert a (tumor's) contour list (2D array) as given by
+    `make_list_of_contour_from_xml()` to opencv contours
+    (not a 2D numpy array!)
 
-        input:
-        li_li_point = list of contours
+    input:
+    li_li_point = 2D contours list
 
-        var:
-        countours = list of contours
-        contour = nparray with x,y coordinate
-
-        return opencv contours
+    return: opencv contours -- list of `numpy.array`
     """
     contours=[]
     for li_point in li_li_point:
-        li_point_int = [[int(round(point[0])), int(round(point[1]))] for point in li_point]
-        contour = np.array(li_point_int,dtype = np.int32)
+        li_point_int = [
+            [int(round(point[0])), int(round(point[1]))]
+            for point in li_point
+        ]
+        # nparray with <x,y> coordinates
+        contour = np.array(li_point_int, dtype=np.int32)
         contours.append(contour)
     return contours
 
 def get_opencv_contours_from_xml(fn_xml,downsample):
-    """"
+    """
         get opencv contours( list of nparrays) from xml annotation file
 
         input:
         fn_xml = xml file name
-        downsample = disired downsample
+        downsample = desired downsample
 
-        return list of contours
+        return: list of contours
     """
-    li_li_point = make_list_of_contour_from_xml(fn_xml,downsample)
+    li_li_point = make_list_of_contour_from_xml(fn_xml, downsample)
     l_contours = convert_list_of_contour_2_opencv_contours(li_li_point)
     return l_contours
 

@@ -14,6 +14,7 @@ from extract_xml import *
 from util import otsu_thresholding
 import logging as llg
 import h5py as hd
+import matplotlib.pyplot as plt
 ################################################################################
 # globals
 debug = False
@@ -265,7 +266,7 @@ def wlog(subj, msg):
     logger.info(subj + ': '+ msg)
 
 
-def load_slide(slide_path, slide_level=6, verbose = 0):
+def load_slide(slide_path, slide_level=6, verbose=0):
     ''' load_slide:
         loads the WSI as a Numpy array
 
@@ -338,14 +339,14 @@ def preprocess(
     """
     rgb_im, slide = load_slide(slide_path, slide_level=slide_level)
 
-    tumor_contours = get_opencv_contours_from_xml(xml_path,slide.level_downsamples[slide_level])
-    tum_im=rgb_im
+    tumor_contours = get_opencv_contours_from_xml(xml_path, slide.level_downsamples[slide_level])
+    tum_im = rgb_im
 
-    mask=np.zeros(tum_im[...,0].shape,np.uint8)
-    con=cv2.drawContours(mask, tumor_contours,-1,(255,0,0), 2)
-    tum =cv2.drawContours(tum_im, tumor_contours,-1,(255,0,0), 3)
-    annotations_mask=cv2.fillPoly(mask, pts =[cn for cn in tumor_contours], color=(255,255,255))
-    annotations_mask=mask
+    mask = np.zeros(tum_im[...,0].shape, np.uint8)
+    con = cv2.drawContours(mask, tumor_contours, -1, (255, 0, 0), 2)
+    tum = cv2.drawContours(tum_im, tumor_contours, -1, (255, 0, 0), 3)
+    annotations_mask = cv2.fillPoly(mask, pts=[cn for cn in tumor_contours], color=(255, 255, 255))
+    annotations_mask = mask
 
     return slide, annotations_mask, rgb_im, tum_im
 

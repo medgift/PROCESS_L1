@@ -9,8 +9,11 @@ basic prototype: each step would go into a separate module/class for better
 control.
 '''
 
-def extract(config, results_dir, logger):
-    '''Patch extaction
+def extract(
+        config, results_dir,
+        logger=None, patients=[]
+):
+    """Patch extaction
 
     Patches are extracted and saved in a HDF5 database patches.hdf5
     with the following structure:
@@ -27,12 +30,18 @@ def extract(config, results_dir, logger):
     Arguments
     +++++++++
 
-    :param config
-        dict(). Program config as defined in :py:mod:`defaults`.
+    :param dict config: program config as defined in :py:mod:`defaults`
 
-    :results_dir
-        str(). Directory where to store the results
-    '''
+    :param str results_dir: directory where to store the results
+
+    Keyword arguments
+    +++++++++++++++++
+
+    :param obj logger: a :py:mod:`logging` instance
+
+    :param list patients: name of patient cases to process instead of the
+    whole dataset
+    """
     logger.info('[extract] step starting...')
 
     from functions import createH5Dataset
@@ -44,14 +53,15 @@ def extract(config, results_dir, logger):
     data_dir = config['settings']['data_dir']
 
     with Dataset(
-        name='camelyon17',
-        slide_source_fld=os.path.join(data_dir, c17_cfg['source_fld']),
-        xml_source_fld=os.path.join(data_dir, c17_cfg['xml_source_fld']),
-        centres=c17_cfg['training_centres'],
-        results_dir=results_dir,
-        h5db_path=os.path.join(results_dir, config['load']['h5file']),
-        logger=logger,
-        config=config        # **FIX-ME** possibly overkill
+            name='camelyon17',
+            patients=patients,
+            slide_source_fld=os.path.join(data_dir, c17_cfg['source_fld']),
+            xml_source_fld=os.path.join(data_dir, c17_cfg['xml_source_fld']),
+            centres=c17_cfg['training_centres'],
+            results_dir=results_dir,
+            h5db_path=os.path.join(results_dir, config['load']['h5file']),
+            logger=logger,
+            config=config        # **FIX-ME** possibly overkill
     ) as c17_dset:
         ############################################################################
         # Core processing. Monitoring running time... [BUG] this is not the best way

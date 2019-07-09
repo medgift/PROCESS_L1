@@ -20,7 +20,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --account=process2
 #SBATCH --partition=plgrid-testing
-#SBATCH --array=0-1
+#SBATCH --array=0-9
 #SBATCH --error=%x-%A_%3a.err
 #SBATCH --output=%x-%A_%3a.out
 ################################################################################
@@ -29,14 +29,27 @@
 #   $HOME      == $PLG_USER_STORAGE
 #   $SCRATCH   == $PLG_USER_SCRATCH  == $PLG_USER_SCRATCH_SHARED
 #                 $PLG_GROUPS_STORAGE == $PLG_GROUPS_SHARED
+#
+# Excpected experiment sandbox structure:
+#
+# <experiment_root>/
+#     code/           symlink to the program's code
+#     conf/           configuration files
+#     data/           (symlink to) directory with input data
+#     results/        persistent results (to be kept/archived)
+#     scratch/        symlink to batch job dir where last runs results are
+#                     stored.  Warning! This is temporary storage; make sure to
+#                     mv important stuff to permanent storage 'results/'
 ################################################################################
 TSTAMP=$(date '+%m%d')
 PROJECT=PROCESS_UC1
 PROJECT_STORAGE=${PLG_GROUPS_STORAGE}/plggprocess/UC1
-CONF_DIR=${PROJECT_STORAGE}/conf
-DATA_DIR=${PROJECT_STORAGE}/datasets/camelyon17/dev_data
-SLURM_SUBMIT_DIR=${SCRATCH}/slurm_jobdir/${PROJECT}
-RESULTS_DIR=${SLURM_SUBMIT_DIR}/results/${SLURM_JOB_NAME}
+EXPERIMENT_ROOT=${PROJECT_STORAGE}/experiments/cnn-patch-extraction
+CONF_DIR=${EXPERIMENT_ROOT}/conf
+DATA_DIR=${EXPERIMENT_ROOT}/data/camelyon17/dev_data
+# Make sure this points to $SCRATCH!
+SLURM_SUBMIT_DIR=${EXPERIMENT_ROOT}/scratch
+RESULTS_DIR=${EXPERIMENT_ROOT}/results/${SLURM_JOB_NAME}
 
 mkdir -p $RESULTS_DIR
 echo 'Directory names: <MMDD>.<slurm-job-id>.<slurm-task-id>' > ${RESULTS_DIR}/README
@@ -76,13 +89,14 @@ PROCESS_UC1__HAS_TENSORFLOW=
 
 export PYTHONPATH PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
-# no container support for now, take stuff under ~/myroot/bin + Git clone dir
+# no container support for now, take stuff under ~/myroot/bin + Git clone
+# dir. Executable is on $PATH, no need to ppek in the ${EXPERIMENT_ROOT} dir
 cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-sdir=${results_sdir} --seed=${run_id} --log-level=debug extract"
 
 echo -e "[INFO] ${myself}: command line:\n    ${cmnd}"
 eval $cmnd
 
 ################################################################################
-# accounting stats
+# stats
 ################################################################################
-sstat -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,ConsumedEnergy
+sacct -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,CPUTimeRAW,Elapsed,ConsumedEnergy
