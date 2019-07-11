@@ -1,9 +1,8 @@
 #!/bin/bash -l
 # -*- mode: shell-script -*-
 ################################################################################
-# runner-slurm_rnd_seed: cnn runner for SLURM with random seed --
-# proof-of-concept for testing parallel patch extraction as patch coordinates
-# are sampled over a uniform distribution.
+# runner-onep-onep: cnn runner for SLURM with one patient/process (or
+# patient/CPU).
 #
 # Use a job array where each task is scheduled automatically on a (possibly)
 # different node/CPU
@@ -13,14 +12,14 @@
 # This file is part of PROCESS_UC1.
 ################################################################################
 # Slurm batch control
-#SBATCH --job-name=cnn-extr_rnd_seed
+#SBATCH --job-name=cnn-extr_onep-onep
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem-per-cpu=5GB
 #SBATCH --time=01:00:00
 #SBATCH --account=process2
 #SBATCH --partition=plgrid-testing
-#SBATCH --array=0-9
+#SBATCH --array=0-4
 #SBATCH --error=%x-%A_%3a.err
 #SBATCH --output=%x-%A_%3a.out
 ################################################################################
@@ -89,9 +88,25 @@ PROCESS_UC1__HAS_TENSORFLOW=
 
 export PYTHONPATH PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
+# The size should correspond to that of the slurm's job array. A bit fragile
+# as we don't know how may files are there... Be careful!
+declare -a patients
+patients=($(ls --color=none ${DATA_DIR}/lesion_annotations/ | sed -nr 's/\.xml// p'))
+
+[[ $patients ]] || {
+    echo >&2 "[ERROR] ${myself}: no patient found in ${DATA_DIR}/lesion_annotations/"
+    exit 1
+}
+# uhm, any better way to bail out from scheduling?
+patient=${patients[${SLURM_ARRAY_TASK_ID}]}
+[[ $patient ]] || {
+    echo >&2 "[WARN] ${myself}: no patient found at index '${SLURM_ARRAY_TASK_ID}'. Skipping..."
+    exit 0
+}
+
 # no container support for now, take stuff under ~/myroot/bin + Git clone
-# dir. Executable is on $PATH, no need to ppek in the ${EXPERIMENT_ROOT} dir
-cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-sdir=${results_sdir} --seed=${run_id} --log-level=debug extract"
+# dir. Executable is on $PATH, no need to peek in the ${EXPERIMENT_ROOT} dir
+cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-sdir=${results_sdir} --log-level=debug extract --patients=${patient}"
 
 echo -e "[INFO] ${myself}: command line:\n    ${cmnd}"
 eval $cmnd

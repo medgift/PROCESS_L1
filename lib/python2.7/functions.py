@@ -29,7 +29,7 @@ logger = None
 '''** NOT IMPLEMENTED YET** Do not use
 '''
 def parseOptionsFromLog(folder, logfile):
-    raise AppError, 'Not implemeted yet'
+    raise RuntimeError, 'Not implemeted yet'
 
     settings = {}
     settings = parseOptions('config.cfg')
@@ -359,7 +359,7 @@ def check_data(centre, source_fld, xml_path):
     return slide_path, None
 
 def parseOptions(configFile):
-    raise AppError, 'Obsoleted by `parseConfig()`'
+    raise RuntimeError, 'Obsoleted by `parseConfig()`'
 
     settings = {}
 
@@ -478,7 +478,7 @@ def parseConfig(configFile, defConfig):
     return config
 
 def parseLoadOptions(configFile):
-    raise AppError, 'Obsoleted by `parseConfig()`'
+    raise RuntimeError, 'Obsoleted by `parseConfig()`'
 
     settings = {}
     config = ConfigParser.RawConfigParser(allow_no_value = True)
@@ -489,7 +489,7 @@ def parseLoadOptions(configFile):
 
 def parseTrainingOptions(configFile):
     # [BUG] should we review and add any missing option??
-    raise AppError, 'Obsoleted by `parseConfig()`'
+    raise RuntimeError, 'Obsoleted by `parseConfig()`'
 
     settings = {}
     config = ConfigParser.RawConfigParser(allow_no_value = True)

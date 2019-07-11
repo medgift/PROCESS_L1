@@ -28,6 +28,22 @@ class Dataset(object):
         CID := 2 => slides for patients PID in [040, 059]
         CID := 3 => slides for patients PID in [060, 079]
         CID := 4 => slides for patients PID in [080, 099]
+
+
+    Public attributes
+    =================
+
+    All optional. They can be set via :meth:`init`.
+
+    .. py:attribute:: patients
+        list(None). List of patients to process. They must be a subset of the
+        whole datasets
+
+    .. py:attribute:: logger
+        obj(None). A :class:`logging.Logger` object. This is needed!
+        **FIX-ME** a dummy one could be used
+
+    ** to be completed **
     """
     name = ''
     patients = []
@@ -131,7 +147,7 @@ class Dataset(object):
 
 
     def count_annotation_files(self):
-        raise AppError, 'Obsoleted by `get_patients()`'
+        raise RuntimeError, 'Obsoleted by `get_patients()`'
 
         files_counter = 0
         for centre in self.centres:
@@ -157,7 +173,7 @@ class Dataset(object):
 
         :return list: a list of
         """
-        raise AppError, 'Obsoleted by `get_patients()`'
+        raise RuntimeError, 'Obsoleted by `get_patients()`'
 
         xml_source_fld = self.xml_source_fld
         xml_of_selected_centre = []
@@ -380,7 +396,7 @@ class Dataset(object):
             logger=None
     ):
         self.name = name
-        self.patients = patients,
+        self.patients = patients if patients else []  # handle None
         self.slide_source_fld = slide_source_fld
         self.xml_source_fld = xml_source_fld
         self.results_dir = results_dir
@@ -394,6 +410,7 @@ class Dataset(object):
 
         self._h5db = hd.File(h5db_path, "w")
 
+        # prepare a bioler-plate representation
         centre_paths = map(
             lambda c: slide_source_fld + str(c), centres
         )
@@ -406,17 +423,53 @@ class Dataset(object):
 
         # validate patient names
         errs = 0
+        valid_patients = []
         for patient in self.patients:
             if not re.match(config['camelyon17']['patient_name_regex'], patient):
                 errs += 1
-                @@@@ HERE @@@@
+                logger.error('{}: invalid input patient: does not match regex "{}"'.
+                             format(patient, config['camelyon17']['patient_name_regex']))
+            else:
+                valid_patients += [patient]
 
-        # filter our unwanted content
+        # filter out unwanted content in input dir
         annots = filter(
-            lambda c: re.search(config['camelyon17']['patient_name_regex'] + '.xml', c),
+            lambda x: re.search(config['camelyon17']['patient_name_regex'] + '.xml', x),
             os.listdir(xml_source_fld)
         )
-        logger.debug('annots: \n%s' % pp.pformat(annots))
+        # keep only given patients. Use a for to catch errors
+        if valid_patients:
+            logger.debug('valid_patients: {}'.format(valid_patients))
+            wannots = []
+            while valid_patients:
+                p = valid_patients.pop()
+                x = p + '.xml'
+                if x in annots:
+                    # valid_patients.remove(p)
+                    wannots += [x]
+                else:
+                    errs += 1
+                    logger.error('{}: input patient not found in dataset'.format(p))
+
+            annots = wannots
+
+        if errs:
+            msg = 'Problems with patient list: see errors above.'
+            logger.fatal(msg)
+            raise RuntimeError(msg)
+
+
+        # if valid_patients:
+        #     msg = 'some patients were not found in dataset:\n%s' % pp.pformat(valid_patients)
+        #     logger.fatal(msg)
+        #     raise RuntimeError(msg)
+
+        if not annots:
+            msg = 'no (requested) patient found in dataset:\n%s'
+            logger.fatal(msg)
+            raise RuntimeError(msg)
+
+        logger.debug('annots:\n%s' % pp.pformat(annots))
 
         # build the complete dataset representation
         for xml in annots:
@@ -426,14 +479,16 @@ class Dataset(object):
                 nid = int(match.group('NID'))
                 logger.debug('XML: {}: PID={}, NID={}'.format(xml, pid, nid))
             except Exception as e:
-                logger.warn('{}: skipping malformatted XML annotation file name'.format(xml))
+                # this should never happen... but you _never_ know ;-)
+                logger.warn('[BUG] {}: skipping malformatted XML annotation file name'.format(xml))
+                continue
 
             # look for corresponding slides
             cid = self.pid2cid(pid)
             logger.debug('PID: {} => CID={}'.format(pid, cid))
 
             if cid == None:
-                logger.info('{}: skipping XML annotation file name -- not in our centres range'.format(xml))
+                logger.info('{}: skipping XML annotation file name: not in our requested centre range'.format(xml))
                 continue
 
             for sld in filter(
@@ -448,6 +503,7 @@ class Dataset(object):
                     logger.debug('TIF: {}: PID={}, NID={}'.format(sld, pid, nid))
                 except Exception as e:
                     logger.warn('{}: skipping malformatted WSI file name'.format(sld))
+                    continue
 
                 pid_nid = '%03d_%d' % (pid, nid)
                 self.dataset[cid]['patients'][pid_nid] = (

@@ -83,12 +83,15 @@ High resolution patch extraction
 Options
 -------
 
-    --gpu-id, -g N
-        (int>=0). Force GPU ID to use. Default '0'.
+Legend: <type>(<default value>)
 
-    --patients, -p XML_ANNOTATION_FILE
-        (str). Path to a single XML annotation file. If given a single WSI slide will
-        be processed for any configured 'centre'. Default: None -- will scan data input dir.
+    --gpu-id, -g N
+        int(0). Force GPU ID to use; must be > = 0.
+
+    --patients, -p PATIENT...
+        list([]). A space-separated list of patient cases. It must be a subset
+        of the whole datasets; each item must match the regex
+        `config['camelyon17'] => 'patient_name_regex'`
 
     --seed, -s S
         (int). Random seed to initialize the Numpy lib
@@ -164,6 +167,12 @@ that some of them can be overridden on the command line, notably:
 
     gpu-id => GPU
 
+
+To-Do
+=====
+
+Provide a CL arg for `--results-dir` -- avoid using a different conf file just for that ;-)
+
 '''
 ################################################################################
 # init
@@ -212,7 +221,7 @@ parser.add_argument(
 parser.add_argument(
     '-p', '--patients',
     dest='patients',
-    nargs='*',
+    nargs='+',
     type=str,
     help='Patient list. Each item must match `[camelyon17] => patient_name_regex` in config file'
 )
@@ -266,11 +275,6 @@ try:
     validate_pipeline(args['pipeline'])
 except argparse.ArgumentTypeError as e:
     sys.exit('[error] invalid pipeline definition: {}\n'.format(e))
-
-# try:
-#     validate_patient(args['patients'], config[])
-# except argparse.ArgumentTypeError as e:
-#     sys.exit('[error] invalid patients names: {}\n'.format(e))
 
 logger.info('[cnn] Setting random seed: %s' % args['seed'])
 np.random.seed(args['seed'])
