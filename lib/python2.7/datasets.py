@@ -303,14 +303,20 @@ class Dataset(object):
                     xml_path,
                     slide_level=settings['slide_level']
                 )
+                opts = {
+                    'slide_level' : settings['slide_level'],
+                    'patch_size' : settings['patch_size'],
+                    'patch_num' : settings['n_samples'],
+                    'white_threshold' : settings['white_threshold'],
+                    'white_threshold_incr' : settings['white_threshold_incr'],
+                    'white_threshold_max' : settings['white_threshold_max'],
+                    'area_overlap' : settings['area_overlap'],
+                    'bad_batch_size' : settings['bad_batch_size'],
+                    'logger' : self.logger,
+                }
 
                 tum_patch_list, tum_patch_point = patch_sampling_using_integral(
-                    slide,
-                    settings['slide_level'],
-                    annotations_mask,
-                    settings['patch_size'],
-                    settings['n_samples'],
-                    logger = self.logger
+                    slide, annotations_mask, **opts
                 )
                 # prefer np arrays...
                 tum_patch_array = np.asarray(tum_patch_list)
@@ -330,12 +336,7 @@ class Dataset(object):
                 normal_im = (normal_im).astype(int)
                 # sampling normal patches with uniform distribution
                 nor_patch_list , nor_patch_point = patch_sampling_using_integral(
-                    slide,
-                    settings['slide_level'],
-                    normal_im,
-                    settings['patch_size'],
-                    settings['n_samples'],
-                    logger = self.logger
+                    slide, normal_im, **opts
                 )
                 nor_patch_array = np.asarray(nor_patch_list)
                 normal_patches_locations = np.array(nor_patch_point)

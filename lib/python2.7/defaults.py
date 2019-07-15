@@ -32,6 +32,11 @@ def_config = {
         'slide_level'           : 5,
         'patch_size'            : 224,
         'n_samples'             : 500,
+        'white_threshold'       : .3,
+        'white_threshold_incr'  : .05,
+        'white_threshold_max'   : .7,
+        'area_overlap'          : .6,
+        'bad_batch_size'        : 1000,
     },
     # Datasets come in different families. For now we support only 'camelyon17'
     'camelyon16'        : {

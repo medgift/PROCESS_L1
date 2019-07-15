@@ -160,7 +160,15 @@ nontumor tissue regions plus a png map with the patch sampling locations, for
 each WSI -- L, C, P and N are integers) follow, and finally the h5 patch DB
 `patches.hdf5`.
 
-A full example of usage is found in [Section Slurm Ex1](#slurm_ex1).
+By default, all the patient cases found in the input dataset are processed. To
+explicitly process only a patient subset, append a `-p` or `--patients`
+(without the '=' sign) option to the command line:
+
+    cnn -c my_config.ini --results-sdir=test extract --patients patient_P_node_N ...
+
+Note that each patient string `patient_P_node_N` has no XML/TIF extension.
+
+Full examples of usage are in [Section Slurm Scripts](#slurm).
 
 
 ### Network training ###
@@ -197,18 +205,74 @@ or on the command line
 See `bin/train.sh` for a full example.
 
 
-## <a name="#slurm_ex1"></a>Slurm Example #1
+## <a name="#slurm"></a>Slurm scripts
 
-The file `bin/runner-slurm_rnd_seed` provide a working example of how to run
-parallel `cnn` runs via the Slurm batch system for performance speed-up. The
-goal is to exploit randomness in the WSI point distribution in order to
-extract different patches at each batch run. This is achieved by using a
-different random seed for any run, which is called like this:
+Some scripts are available in `bin/` to launch parallel `cnn` runs via the
+Slurm batch system. These are working examples which can achieve linear
+speed-up (minus system overhead).
+
+### <a name="#slurm_rnd_seed"></a>Parallel patch extraction by randomized seed
+
+The file `bin/runner-slurm_rnd_seed` uses a Slurm job array where each task is
+configured with a different random seed. The goal is to exploit randomness in
+the WSI point distribution in order to extract a different patch set at each
+batch run. Here's the relevant parts of the bash script (slightly simplified),
+where the random seed is set by the batch scheduler task ID in an array of [0,
+N]. Note also that results are stored in different subdirs.
+
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --array=0-9
+
+    task_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
 
     cnn --config-file=... \
         --results-sdir=.../${task_id} \
         --seed=${task_id}\
         extract
 
-where the random seed is set by the batch scheduler task ID in an array of [0,
-N]. Note also that results are stored in different subdirs.
+Please, review the full script, then call it like this:
+
+    some-hpc$ sbatch runner-slurm_rnd_seed
+
+Under the hypothesis of infinite resources (i.e., available CPUs), this script
+achieves linear speed-up as each task is assigned a different Slurm "node",
+i.e. a CPU. No GPGPU is involved.
+
+
+### <a name="#slurm_onep-onep"></a>Parallel slide processing
+
+The file `bin/runner-onep-onep` uses a Slurm job array where each task is
+assigned a different WSI (a single "patient case") while the random seed is
+the same. Here's the relevant parts of the bash script (slightly simplified).
+Note also that results are stored in different subdirs.
+
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --array=0-<NUMBER_OF_XML_FILES>
+
+    task_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
+
+    declare -a patients
+    patients=($(ls --color=none some-dir/with-xml-annotations/ | sed -nr 's/\.xml// p'))
+    patient=${patients[${SLURM_ARRAY_TASK_ID}]}
+
+    cnn --config-file=... \
+        --results-sdir=.../${task_id} \
+        --patients=${patient}\
+        extract
+
+**N.B.** The the parameter `<NUMBER_OF_XML_FILES>` should be set to the total
+number of "patients". Since the `patients` array is built by listing the
+content of a directory with Camelyon17-style XML annotation files, their total
+number should be known in advance. Failing to do so will result in either
+running useless tasks (more task slots than patients), or overloading the
+batch system (more patients than task slots) with subsequent less-than-linear
+speed-up.
+
+Please, review the full script, then call it like this:
+
+    some-hpc$ sbatch runner-onep-onep
+
+Under the hypothesis of infinite resources (i.e., available CPUs), this script
+achieves linear speed-up. No GPGPU is involved.
