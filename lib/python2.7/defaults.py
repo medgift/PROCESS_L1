@@ -32,11 +32,17 @@ def_config = {
         'slide_level'           : 5,
         'patch_size'            : 224,
         'n_samples'             : 500,
-        'white_threshold'       : .3,
-        'white_threshold_incr'  : .05,
-        'white_threshold_max'   : .7,
-        'area_overlap'          : .6,
-        'bad_batch_size'        : 1000,
+        'white_level'           : 200,          # RGB reference level for the white mask
+        'white_threshold'       : .3,           # [0, 1]. Discard patches "whiter" than this (**clarify units**)
+        'white_threshold_incr'  : .05,          # increment of `white_threshold` when too many bad patches
+                                                # are found. i.e. >= `bad_batch_size`
+        'white_threshold_max'   : .7,           # max allowed before bailing out
+        'gray_threshold'        : 90,           # retain patches whose RGB mean is bigger than this
+        'area_overlap'          : .6,           # total patch area should covers at least this % of the annotation
+                                                # region
+        'bad_batch_size'        : 1000,         # every these "bad" patches, increase the white threshold
+        'margin_width_x'        : 0,            # (pixel number) discard mask points falling within this margins.
+        'margin_width_y'        : 0,            # Set to 0 to grab everything
     },
     # Datasets come in different families. For now we support only 'camelyon17'
     'camelyon16'        : {

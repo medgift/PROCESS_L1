@@ -303,17 +303,26 @@ class Dataset(object):
                     xml_path,
                     slide_level=settings['slide_level']
                 )
-                opts = {
-                    'slide_level' : settings['slide_level'],
-                    'patch_size' : settings['patch_size'],
-                    'patch_num' : settings['n_samples'],
-                    'white_threshold' : settings['white_threshold'],
-                    'white_threshold_incr' : settings['white_threshold_incr'],
-                    'white_threshold_max' : settings['white_threshold_max'],
-                    'area_overlap' : settings['area_overlap'],
-                    'bad_batch_size' : settings['bad_batch_size'],
-                    'logger' : self.logger,
-                }
+
+                opts = dict(
+                    map(
+                        lambda k: (k, settings[k]), (
+                            'area_overlap',
+                            'bad_batch_size',
+                            'gray_threshold',
+                            'margin_width_x',
+                            'margin_width_y',
+                            'n_samples',
+                            'patch_size',
+                            'slide_level',
+                            'white_level',
+                            'white_threshold',
+                            'white_threshold_incr',
+                            'white_threshold_max',
+                        )
+                    )
+                )
+                opts['logger'] = self.logger
 
                 tum_patch_list, tum_patch_point = patch_sampling_using_integral(
                     slide, annotations_mask, **opts

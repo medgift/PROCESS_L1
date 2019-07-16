@@ -133,18 +133,13 @@ Patches are hierarchically stored in a h5 file with the following tree structure
     Normal / Level N / Centre C / Patient P / Node No / locations
     ...
 
-Results are stored under the directory specified by
+Results are stored in the directory specified by config file option `results_dir` defined
+under in section `[settings]`, which can be overridden by command line argument
+`--results-sdir`, f.i.:
 
-    <results_dir>/<results_sdir>
+    cnn -c my_config.ini --results-sdir=path/to/my/results extract
 
-where `<results_dir>` is defined under config file's section `[settings]`, and
-`<results_sdir>` is either auto-generated as a "MMDD-hhmm" timestamp or
-defined by command line argument `--results-sdir`. So, supposing that
-`results_dir = /foo/bar`, to always use the same subdirectory, one would call
-
-    cnn -c my_config.ini --results-sdir=test extract
-
-then `/foo/bar/test` would contain something like:
+then `path/to/my/results` would contain something like:
 
     my_config.ini
     INFO.log
@@ -190,7 +185,7 @@ section of `my_config.ini` -- **PLEASE REVIEW**. Whereas output is composed of
 * the model new weights stored in file `tumor_classifier.h5`,
 * the training curves as png images,
 
-all stored under directory `<results_dir>/<results_sdir>` (**PLEASE VERIFY**).
+all stored under directory `<results_dir>/` (**PLEASE VERIFY**).
 
 Training is performed on GPGPU, by default the first one in the array (index
 '0'). This can be either specified in `my_config.ini`
@@ -218,7 +213,7 @@ configured with a different random seed. The goal is to exploit randomness in
 the WSI point distribution in order to extract a different patch set at each
 batch run. Here's the relevant parts of the bash script (slightly simplified),
 where the random seed is set by the batch scheduler task ID in an array of [0,
-N]. Note also that results are stored in different subdirs.
+N]. Note also that results are stored in different directories.
 
     #SBATCH --nodes=1
     #SBATCH --ntasks-per-node=1
@@ -227,7 +222,7 @@ N]. Note also that results are stored in different subdirs.
     task_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
 
     cnn --config-file=... \
-        --results-sdir=.../${task_id} \
+        --results-dir=.../${task_id} \
         --seed=${task_id}\
         extract
 
@@ -242,10 +237,10 @@ i.e. a CPU. No GPGPU is involved.
 
 ### <a name="#slurm_onep-onep"></a>Parallel slide processing
 
-The file `bin/runner-onep-onep` uses a Slurm job array where each task is
+The file `bin/runner-slurm_onep-onep` uses a Slurm job array where each task is
 assigned a different WSI (a single "patient case") while the random seed is
 the same. Here's the relevant parts of the bash script (slightly simplified).
-Note also that results are stored in different subdirs.
+Note also that results are stored in different directories.
 
     #SBATCH --nodes=1
     #SBATCH --ntasks-per-node=1
@@ -258,7 +253,7 @@ Note also that results are stored in different subdirs.
     patient=${patients[${SLURM_ARRAY_TASK_ID}]}
 
     cnn --config-file=... \
-        --results-sdir=.../${task_id} \
+        --results-dir=.../${task_id} \
         --patients=${patient}\
         extract
 
@@ -272,7 +267,7 @@ speed-up.
 
 Please, review the full script, then call it like this:
 
-    some-hpc$ sbatch runner-onep-onep
+    some-hpc$ sbatch runner-slurm_onep-onep
 
 Under the hypothesis of infinite resources (i.e., available CPUs), this script
 achieves linear speed-up. No GPGPU is involved.
