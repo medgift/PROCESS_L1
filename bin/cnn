@@ -25,7 +25,7 @@ import matplotlib
 # *must* stay here, before downstream imports of matplotlib.pyplot
 matplotlib.use('agg')
 
-import os, traceback, errno
+import os, traceback, errno, random
 from os import listdir
 from os.path import join, isfile, exists, splitext
 from random import shuffle
@@ -64,7 +64,6 @@ from functions import (
 )
 from pipeline import extract, load, train
 from extract_xml import *
-from integral import patch_sampling_using_integral
 if HAS_TENSORFLOW:
     from models import *
 ###############################################################################
@@ -94,7 +93,7 @@ Legend: <type>(<default value>)
         `config['camelyon17'] => 'patient_name_regex'`
 
     --seed, -s S
-        <int>(). Random seed to initialize the Numpy lib
+        <int>({OS default}). Random seed
 
     --log-level, -l LEVEL
         <str>('info'). Logging level (notset, debug, info, warn, error, critical)
@@ -213,7 +212,7 @@ parser.add_argument(
     dest='seed',
     type=int,
     default=0,
-    help='Numpy random seed'
+    help='Random seed'
 )
 parser.add_argument(
     '-p', '--patients',
@@ -272,6 +271,7 @@ except argparse.ArgumentTypeError as e:
 
 logger.info('[cnn] Setting random seed: %s' % args['seed'])
 np.random.seed(args['seed'])
+random.seed(args['seed'])
 
 ################################################################################
 # pipeline run

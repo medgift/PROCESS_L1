@@ -7,7 +7,6 @@ from os.path import join, expanduser
 from openslide import OpenSlide
 import numpy as np
 import cv2
-from integral import patch_sampling_using_integral
 if HAS_SKIMAGE_VIEW:
     from skimage.viewer import ImageViewer
 from extract_xml import *
@@ -346,6 +345,7 @@ def preprocess(
     con = cv2.drawContours(mask, tumor_contours, -1, (255, 0, 0), 2)
     tum = cv2.drawContours(tum_im, tumor_contours, -1, (255, 0, 0), 3)
     annotations_mask = cv2.fillPoly(mask, pts=[cn for cn in tumor_contours], color=(255, 255, 255))
+    # [BUG] why re-assigned!?
     annotations_mask = mask
 
     return slide, annotations_mask, rgb_im, tum_im

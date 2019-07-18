@@ -73,6 +73,10 @@ def extract(
 
         tot_patches = c17_dset.tum_counter +  c17_dset.nor_counter
 
+    if not tot_patches:
+        logger.warning('[extract] No patch extracted!?')
+        return
+
     time_per_patch = patch_extraction_elapsed / tot_patches
     logger.info('[extract] Total elapsed time: {}'.format(patch_extraction_elapsed))
     logger.info('[extract] Time per patch: {}'.format(time_per_patch))
