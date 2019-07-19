@@ -28,7 +28,8 @@ def_config = {
         'data_dir'              : 'data',       # subdir of 'project_root'
         'results_dir'           : 'results',    # (ditto)
         # TO-DO: this stuff below should go elsewhere
-        'GPU'                   : 0,
+        'method'                : 'random',
+        'gpu_id'                : 0,
         'slide_level'           : 5,
         'patch_size'            : 224,
         'n_samples'             : 500,

@@ -92,6 +92,9 @@ Legend: <type>(<default value>)
         of the whole datasets; each item must match the regex
         `config['camelyon17'] => 'patient_name_regex'`
 
+    --method, -m METHOD
+        <str>('random'). Sampling method (random, linear)
+
     --seed, -s S
         <int>({OS default}). Random seed
 
@@ -185,6 +188,14 @@ parser.add_argument(
     help='2-step pipeline'
 )
 parser.add_argument(
+    '-w', '--window',
+    metavar='CUR',
+    dest='window',
+    nargs=2,
+    type=validate_non_neg_int,
+    help='nonzero point index window (range MIN MAX)'
+)
+parser.add_argument(
     '-c', '--config-file',
     dest='config_file',
     type=str,
@@ -206,6 +217,14 @@ parser.add_argument(
     type=str, # validated downstream
     choices=('notset', 'debug', 'info', 'warn', 'error', 'critical'),
     help='logging level'
+)
+parser.add_argument(
+    '-m', '--method',
+    dest='method',
+    default='random',
+    type=str, # validated downstream
+    choices=('random', 'linear'),
+    help='sampling method'
 )
 parser.add_argument(
     '-s', '--seed',
@@ -237,7 +256,11 @@ args = vars(parser.parse_args())
 config = parseConfig(args['config_file'], def_config)
 
 # settings override, None by args default
-for k in ('gpu_id', 'results_dir'):
+for k in (
+        'gpu_id',
+        'method',
+        'results_dir'
+):
     if args[k]:
         config['settings'][k] = args[k]
 

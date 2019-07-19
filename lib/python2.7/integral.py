@@ -86,22 +86,26 @@ def is_point_within_boundaries(
     return (patch_bound[0] <= bound[0]) and (patch_bound[1] <= bound[1])
 
 
-def bind_index_function(name):
-    def get_random_index(min, max):
-        """Auxiliary function to return a random index over a uniform distribution in
-        [`min`, `max`].
+def get_random_index(min, max):
+    """Return a generator (that never stops) over a uniform
+    distribution of random indexes in [`min`, `max`].
 
-        """
-        # pick a random index...
-        return randint(min, max)
-
-    @@@@@@@@@  WIP: DO NOT USE  @@@@@@@@@
-    func1.__name__ = name
-    return func1
+    """
+    while True:
+        yield randint(min, max)
 
 
+def get_linear_index(min, max):
+    """Return a generator over a linear index range in [`min`, `max`].
 
-def patch_sampling_random(slide, mask, **opts):
+    """
+    i = min
+    while i < max:
+        yield i
+        i += 1
+
+
+def patch_sampling(slide, mask, **opts):
     """Patch sampling on whole slide image by random points over an uniform
     distribution.
 
@@ -148,8 +152,8 @@ def patch_sampling_random(slide, mask, **opts):
             dopts[dk] = opts.pop(dk, None)
         except KeyError as k:
             pass
-        # reinject as standard var ;-). Need to specify a namespace
-        # <https://stackoverflow.com/questions/4484872/why-doesnt-exec-work-in-a-function-with-a-subfunction>
+        # reinject as standard var... This is just because I'm lazy and want
+        # to keep the original names ;-)
         exec "{} = dopts[dk]".format(dk)
 
     if opts:
@@ -157,7 +161,7 @@ def patch_sampling_random(slide, mask, **opts):
         raise RuntimeError('unexpected options {}'.format(opts))
 
     # bind to the requested aux functions
-    get_index = 'get_{}_index'.format(method)
+    get_index = globals()['get_{}_index'.format(method)]
     logger.debug("Using sampling: {} => {}".format(method, get_index))
 
     if not callable(get_index):
@@ -192,10 +196,10 @@ def patch_sampling_random(slide, mask, **opts):
     y_ws = (np.round(y_l * slide.level_downsamples[slide_level])).astype(int)
     cnt = 0         # good patch counter
     nt_cnt = 0      # not taken patch counter
+    pidx_itr = get_index(0, x_ln - 1)
     while(cnt < n_samples):
-        # pick a random index...
-        # p_idx = randint(0, x_ln - 1)
-        p_idx = get_index(0, x_ln - 1)
+        # pick an index...
+        p_idx = pidx_itr.next()
         # ...correspondig point in the mask
         level_point_x, level_point_y = x_l[p_idx], y_l[p_idx]
         # [BUG] otsu threshold takes also border, so discard?? mmh, needs

@@ -3,7 +3,7 @@ from functions import preprocess, get_morp_im
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-from integral import patch_sampling_random
+from integral import patch_sampling
 import openslide
 import pprint as pp
 import h5py as hd
@@ -307,6 +307,7 @@ class Dataset(object):
                 opts = dict(
                     map(
                         lambda k: (k, settings[k]), (
+                            'method',
                             'area_overlap',
                             'bad_batch_size',
                             'gray_threshold',
@@ -323,9 +324,8 @@ class Dataset(object):
                     )
                 )
                 opts['logger'] = self.logger
-                opts['method'] = 'random'
 
-                tum_patch_list, tum_patch_point = patch_sampling_random(
+                tum_patch_list, tum_patch_point = patch_sampling(
                     slide, annotations_mask, **opts
                 )
                 if tum_patch_list and tum_patch_point:
@@ -349,10 +349,10 @@ class Dataset(object):
                 normal_im = normal_im == 1.0
                 normal_im = (normal_im).astype(int)
                 # sampling normal patches with uniform distribution
-                nor_patch_list , nor_patch_point = patch_sampling_random(
+                nor_patch_list , nor_patch_point = patch_sampling(
                     slide, normal_im, **opts
                 )
-                if nor_patch_array and nor_patch_list:
+                if nor_patch_point and nor_patch_list:
                     nor_patch_array = np.asarray(nor_patch_list)
                     normal_patches_locations = np.array(nor_patch_point)
                     self.store(info, nor_patch_array, nor_patch_point, 'normal')
