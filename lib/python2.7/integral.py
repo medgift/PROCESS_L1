@@ -6,6 +6,7 @@ from random import randint
 """
 TO-DO:
 * use proper point(x, y) class [over np.arrays?]
+* develop a `sampler` class -- too many kludges down there ^_^
 """
 
 
@@ -86,28 +87,62 @@ def is_point_within_boundaries(
     return (patch_bound[0] <= bound[0]) and (patch_bound[1] <= bound[1])
 
 
-def get_random_index(min, max):
-    """Return a generator (that never stops) over a uniform
+def get_index__random(min, max):
+    """Return a generator (that _never_ stops) over a uniform
     distribution of random indexes in [`min`, `max`].
-
     """
     while True:
         yield randint(min, max)
 
 
-def get_linear_index(min, max):
+def get_index__linear(min, max):
     """Return a generator over a linear index range in [`min`, `max`].
-
     """
     i = min
     while i < max:
         yield i
         i += 1
 
+def is_sampling_over__random(cnt, stop):
+    """Tell if random sampling is over given the counter `cnt` and its `stop`
+    value.
+
+    :return bool: cnt < stop
+    """
+    return cnt >= stop
+
+
+def is_sampling_over__linear(cnt, stop):
+    """Dummy function as linear sampling ends when it's corresponding index
+    generator `get_linear_index` stops. `cnt` and `stop` are ignored.  value.
+
+    :return bool: always False
+    """
+    return False
+
+def nonzero_range(mask, window=[]):
+    """Return a nonzero 2D point array from `mask` in range
+    [`window[0]`, `window[1]`).
+
+    :return list, list: as np arrays
+    """
+    x_l, y_l = mask.nonzero()
+    if window:
+        x_ln, y_ln = len(x_l), len(y_l)
+        x_l = x_l[int(window[0]/100.*x_ln):int(window[1]/100.*x_ln)]
+        y_l = y_l[int(window[0]/100.*y_ln):int(window[1]/100.*y_ln)]
+
+    return x_l, y_l
 
 def patch_sampling(slide, mask, **opts):
     """Patch sampling on whole slide image by random points over an uniform
     distribution.
+
+    TO-DO
+    +++++
+
+    Flush here batches of patches into th h5 DB to avoid OOM when n_samples is
+    big or when using linear sampling!
 
     Arguments
     +++++++++
@@ -128,6 +163,7 @@ def patch_sampling(slide, mask, **opts):
     ...plaese complete me!
 
     return: list of patches (RGB images), list of patch point (starting from left top)
+
     """
     # def values updated from **opts
     dopts = {
@@ -145,6 +181,7 @@ def patch_sampling(slide, mask, **opts):
         'white_threshold' : .3,
         'white_threshold_incr' : .05,
         'white_threshold_max' : .7,
+        'window' : []
     }
     for dk in dopts:
         # [BUG] if called with a missing key, won't get the deault!?
@@ -160,15 +197,18 @@ def patch_sampling(slide, mask, **opts):
         # leftovers...
         raise RuntimeError('unexpected options {}'.format(opts))
 
-    # bind to the requested aux functions
-    get_index = globals()['get_{}_index'.format(method)]
-    logger.debug("Using sampling: {} => {}".format(method, get_index))
-
-    if not callable(get_index):
-        logger.error('{}: invalid index sampling method'.format(method))
-        return None, None
-
     logger.debug("kw opts:\n{}.".format(dopts))
+
+    # bind to aux functions
+    bfn = {
+        'get_index': None,
+        'is_sampling_over' : None,
+    }
+    for n in bfn.keys():
+        bfn[n] = globals()['{}__{}'.format(n, method)]
+        if not callable(bfn[n]):
+            logger.fatal('[BUG] {} => {}: invalid aux function binding'.format(n, bfn[n]))
+            return None, None
 
     report = {
         'out_of_boundary' : 0,
@@ -182,10 +222,14 @@ def patch_sampling(slide, mask, **opts):
     # patch size at given level or resolution
     level_patch_size = int(patch_size / slide.level_downsamples[slide_level])
     # lists of nonzero points in the mask
-    x_l, y_l = mask.nonzero()
-    x_ln = len(x_l)
+    if window:
+        logger.info(
+            "Restricting nonzero points range to {}%, {}%".format(window[0], window[1])
+        )
+    x_l, y_l = nonzero_range(mask, window)
+    x_ln, y_ln = len(x_l), len(y_l)
 
-    logger.debug('Mask has {} x, {} y nonzero points'.format(x_ln, len(y_l)))
+    logger.info('Mask has {} x {} nonzero points'.format(x_ln, len(y_l)))
 
     if x_ln < level_patch_size * 2:
         logger.error("Not enough nonzero mask points for at least 2 patches. Bailing out.")
@@ -196,31 +240,35 @@ def patch_sampling(slide, mask, **opts):
     y_ws = (np.round(y_l * slide.level_downsamples[slide_level])).astype(int)
     cnt = 0         # good patch counter
     nt_cnt = 0      # not taken patch counter
-    pidx_itr = get_index(0, x_ln - 1)
-    while(cnt < n_samples):
+    p_iterator = bfn['get_index'](0, x_ln - 1)
+    while(not bfn['is_sampling_over'](cnt, n_samples)):
         # pick an index...
-        p_idx = pidx_itr.next()
-        # ...correspondig point in the mask
+        try:
+            p_idx = p_iterator.next()
+        except StopIteration:
+            break
+
+        # ...corresponding point in the mask
         level_point_x, level_point_y = x_l[p_idx], y_l[p_idx]
         # [BUG] otsu threshold takes also border, so discard?? mmh, needs
         # double check (risk missing stuff...)
         if is_point_on_border(level_point_x, level_point_y, margin_width_x, margin_width_y):
-            logger.debug(
-                'Skipping point on mask border: {}x ?< {}, {}y ?< {}'.format(
-                    level_point_x, margin_width_x, level_point_y, margin_width_y
-                )
-            )
+            # logger.debug(
+            #     'Skipping point on mask border: {}x ?< {}, {}y ?< {}'.format(
+            #         level_point_x, margin_width_x, level_point_y, margin_width_y
+            #     )
+            # )
             report['on_border'] += 1
             continue
 
         if not is_point_within_boundaries(
                 level_point_x, level_point_y, level_patch_size, mask.shape
         ):
-            logger.debug(
-                'Skipping point out of mask boundary: {} ?> {}, {} ?> {}'.format(
-                    level_point_x, mask.shape[0], level_point_y, mask.shape[1]
-                )
-            )
+            # logger.debug(
+            #     'Skipping point out of mask boundary: {} ?> {}, {} ?> {}'.format(
+            #         level_point_x, mask.shape[0], level_point_y, mask.shape[1]
+            #     )
+            # )
             report['out_of_boundary'] += 1
             continue
 
@@ -248,7 +296,7 @@ def patch_sampling(slide, mask, **opts):
 
         if np.sum(patch) == 0:
             report['black_patches'] += 1
-            logger.debug('Skipping black patch at {}, {}'.format(level_point_x, level_point_y))
+            # logger.debug('Skipping black patch at {}, {}'.format(level_point_x, level_point_y))
             continue
 
         # check almost white RGB values.
@@ -264,7 +312,7 @@ def patch_sampling(slide, mask, **opts):
                 cnt += 1
             else:
                 report['gray_patches'] += 1
-                logger.debug('Skipping grey patch at {}, {}'.format(x_l[p_idx], y_l[p_idx]))
+                # logger.debug('Skipping grey patch at {}, {}'.format(x_l[p_idx], y_l[p_idx]))
         else:
             # bad one: too white
             report['white_patches'] += 1
@@ -295,5 +343,6 @@ def patch_sampling(slide, mask, **opts):
             report['black_patches'], report['white_patches'], report['gray_patches']
         )
     )
+    logger.info('Extracted {} good patches'.format(cnt))
 
     return patch_list, patch_point

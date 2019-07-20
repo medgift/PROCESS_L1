@@ -11,7 +11,7 @@ control.
 
 def extract(
         config, results_dir,
-        logger=None, patients=[]
+        logger=None, patients=[], window=[]
 ):
     """Patch extaction
 
@@ -41,6 +41,8 @@ def extract(
 
     :param list patients: name of patient cases to process instead of the
     whole dataset
+
+    :param list window: %range [min, max) of nonzero mask points to sample
     """
     logger.info('[extract] step starting...')
 
@@ -73,13 +75,12 @@ def extract(
 
         tot_patches = c17_dset.tum_counter +  c17_dset.nor_counter
 
-    if not tot_patches:
-        logger.warning('[extract] No patch extracted!?')
-        return
-
-    time_per_patch = patch_extraction_elapsed / tot_patches
-    logger.info('[extract] Total elapsed time: {}'.format(patch_extraction_elapsed))
-    logger.info('[extract] Time per patch: {}'.format(time_per_patch))
+    if tot_patches:
+        time_per_patch = patch_extraction_elapsed / tot_patches
+        logger.info('[extract] Total elapsed time: {}'.format(patch_extraction_elapsed))
+        logger.info('[extract] Time per patch: {}'.format(time_per_patch))
+    else:
+        logger.warning('[extract] No patch extracted')
 
     logger.info('[extract] step done!')
 

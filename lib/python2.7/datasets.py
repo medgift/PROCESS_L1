@@ -308,6 +308,7 @@ class Dataset(object):
                     map(
                         lambda k: (k, settings[k]), (
                             'method',
+                            'window',
                             'area_overlap',
                             'bad_batch_size',
                             'gray_threshold',
@@ -335,7 +336,9 @@ class Dataset(object):
                     # store it
                     self.store(info, tum_patch_array, tum_locations, 'tumor')
                 else:
-                    self.logger.error('patient: {}: tumor patch sampling failed'.format(patient))
+                    self.logger.warning(
+                        'patient: {}: no tumor patch extracted'.format(patient)
+                    )
                     continue
 
                 # reverting the tumor mask to find normal tissue and extract patches
@@ -357,7 +360,9 @@ class Dataset(object):
                     normal_patches_locations = np.array(nor_patch_point)
                     self.store(info, nor_patch_array, nor_patch_point, 'normal')
                 else:
-                    self.logger.error('patient: {}: normal patch sampling failed'.format(patient))
+                    self.logger.warning(
+                        'patient: {}: no normal patch extracted'.format(patient)
+                    )
                     continue
 
                 # plotting the tumor locations in the XML file Drawing the

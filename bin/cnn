@@ -59,6 +59,7 @@ from functions import (
     logger,
     parseConfig,
     validate_non_neg_int,
+    validate_percent_int,
     validate_pipeline,
     log_init,
 )
@@ -94,6 +95,10 @@ Legend: <type>(<default value>)
 
     --method, -m METHOD
         <str>('random'). Sampling method (random, linear)
+
+    --window MIN MAX
+        <int>(). Nonzero point index window in [0, 100]). This will limit the
+        sampling to the %range [MIN, MAX) of all available indices
 
     --seed, -s S
         <int>({OS default}). Random seed
@@ -192,7 +197,7 @@ parser.add_argument(
     metavar='CUR',
     dest='window',
     nargs=2,
-    type=validate_non_neg_int,
+    type=validate_percent_int,
     help='nonzero point index window (range MIN MAX)'
 )
 parser.add_argument(
@@ -259,7 +264,8 @@ config = parseConfig(args['config_file'], def_config)
 for k in (
         'gpu_id',
         'method',
-        'results_dir'
+        'results_dir',
+        'window'
 ):
     if args[k]:
         config['settings'][k] = args[k]
@@ -303,7 +309,10 @@ random.seed(args['seed'])
 for step in args['pipeline']:
     logger.info('[cnn] running step: {}'.format(step))
     try:
-        eval(step)(config, new_results_dir, logger=logger, patients=args['patients'])
+        eval(step)(
+            config, new_results_dir,
+            logger=logger, patients=args['patients'], window=args['window']
+        )
     except Exception as e:
         logger.debug(traceback.format_exc())
         sys.exit('[cnn] {}: pipeline step failed: {} '.format(step, e))

@@ -342,13 +342,12 @@ def preprocess(
     tum_im = rgb_im
 
     mask = np.zeros(tum_im[...,0].shape, np.uint8)
-    con = cv2.drawContours(mask, tumor_contours, -1, (255, 0, 0), 2)
-    tum = cv2.drawContours(tum_im, tumor_contours, -1, (255, 0, 0), 3)
-    annotations_mask = cv2.fillPoly(mask, pts=[cn for cn in tumor_contours], color=(255, 255, 255))
-    # [BUG] why re-assigned!?
-    annotations_mask = mask
+    # calls below modify `mask` in place
+    cv2.drawContours(mask, tumor_contours, -1, (255, 0, 0), 2)
+    cv2.drawContours(tum_im, tumor_contours, -1, (255, 0, 0), 3)
+    cv2.fillPoly(mask, pts=[cn for cn in tumor_contours], color=(255, 255, 255))
 
-    return slide, annotations_mask, rgb_im, tum_im
+    return slide, mask, rgb_im, tum_im
 
 def check_data(centre, source_fld, xml_path):
     pwd = source_fld + str(centre) + '/'
@@ -522,5 +521,12 @@ def validate_non_neg_int(string):
     value=int(string)
     if value < 0:
         raise ArgumentTypeError("{}: must be non negative integer".format(string))
+
+    return value
+
+def validate_percent_int(string):
+    value=int(string)
+    if value < 0 or value > 100:
+        raise ArgumentTypeError("{}: must be integer in [0, 100]".format(string))
 
     return value

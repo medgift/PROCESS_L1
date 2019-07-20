@@ -29,6 +29,7 @@ def_config = {
         'results_dir'           : 'results',    # (ditto)
         # TO-DO: this stuff below should go elsewhere
         'method'                : 'random',
+        'window'                : [],
         'gpu_id'                : 0,
         'slide_level'           : 5,
         'patch_size'            : 224,
