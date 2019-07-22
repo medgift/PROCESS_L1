@@ -33,16 +33,35 @@ def_config = {
         'gpu_id'                : 0,
         'slide_level'           : 5,
         'patch_size'            : 224,
-        'n_samples'             : 500,
+        'n_samples'             : 500,          # only used with 'method' := 'random'
         'white_level'           : 200,          # RGB reference level for the white mask
-        'white_threshold'       : .3,           # [0, 1]. Discard patches "whiter" than this (**clarify units**)
-        'white_threshold_incr'  : .05,          # increment of `white_threshold` when too many bad patches
-                                                # are found. i.e. >= `bad_batch_size`
-        'white_threshold_max'   : .7,           # max allowed before bailing out
+        'white_threshold'       : .6,           # [0, 1]. Discard patches "whiter" than this (**clarify units**)
+
+        # Dynamic white threshold, _only_ with 'method' := 'random'. This is
+        # somewhat overdoing: use with caution and . Rationale: using a too
+        # low `white_threshold` might discard valuable patches, hence the
+        # mechanism:
+        #
+        #     bad_ones := count how many white patches we got so far
+        #     if bad_ones > bad_batch_size
+        #         increse white_threshold of white_threshold_incr
+        #         if white_threshold >= white_threshold_max
+        #             bail out (stop sampling)
+        #
+        # Warnings:
+        # * if the total nonzero mask point is <= 'bad_batch_size', the
+        #   increment will never be triggered
+        # * if the total nonzero mask point is <= 'n_samples', you'll probably get duplicated pathes
+        'bad_batch_size'        : 1000,         # every these "bad" patches, increase the white threshold
+        'white_threshold_incr'  : .0,           # increment of `white_threshold` when too many bad patches
+                                                # are found. i.e. >= `bad_batch_size`. Set to '0'
+                                                # to disable the mechanism
+        'white_threshold_max'   : .7,           # max allowed before bailing out. Use only if
+                                                # `white_threshold_incr` > 0
+
         'gray_threshold'        : 90,           # retain patches whose RGB mean is bigger than this
         'area_overlap'          : .6,           # total patch area should covers at least this % of the annotation
                                                 # region
-        'bad_batch_size'        : 1000,         # every these "bad" patches, increase the white threshold
         'margin_width_x'        : 0,            # (pixel number) discard mask points falling within this margins.
         'margin_width_y'        : 0,            # Set to 0 to grab everything
     },

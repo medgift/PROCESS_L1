@@ -103,7 +103,7 @@ def get_index__linear(min, max):
         yield i
         i += 1
 
-def is_sampling_over__random(cnt, stop):
+def is_batch_over__random(cnt, stop):
     """Tell if random sampling is over given the counter `cnt` and its `stop`
     value.
 
@@ -112,7 +112,7 @@ def is_sampling_over__random(cnt, stop):
     return cnt >= stop
 
 
-def is_sampling_over__linear(cnt, stop):
+def is_batch_over__linear(cnt, stop):
     """Dummy function as linear sampling ends when it's corresponding index
     generator `get_linear_index` stops. `cnt` and `stop` are ignored.  value.
 
@@ -134,15 +134,36 @@ def nonzero_range(mask, window=[]):
 
     return x_l, y_l
 
+
+def get_white_threshold__random(
+        nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr
+):
+    """Too many bad ones in this batch, tweak it"""
+    # globals nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr, logger
+    if nt_cnt >= bad_batch_size:
+        if white_threshold >= white_threshold_max:
+            return None, None
+
+        white_threshold += white_threshold_incr
+        nt_cnt = 0
+        # logger.debug(
+        #     'white_threshold += {}, now at {}'.format(
+        #         white_threshold_incr, white_threshold
+        #     )
+        # )
+        return nt_cnt, white_threshold
+    return nt_cnt, white_threshold
+
+def get_white_threshold__linear(
+        nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr
+):
+    """No-op"""
+    return nt_cnt, white_threshold
+
+
 def patch_sampling(slide, mask, **opts):
     """Patch sampling on whole slide image by random points over an uniform
     distribution.
-
-    TO-DO
-    +++++
-
-    Flush here batches of patches into th h5 DB to avoid OOM when n_samples is
-    big or when using linear sampling!
 
     Arguments
     +++++++++
@@ -150,19 +171,28 @@ def patch_sampling(slide, mask, **opts):
     slide = OpenSlide Object
     mask = mask image ( 0-1 int type nd-array)
 
+
     Keyword arguments
     +++++++++++++++++
 
+    :param int start_idx: start index on the mask's nonzero point
+    list. Ignored if `mode` == 'random'
+
     :param obj logger: a pymod:logging instance
 
-    slide_level = level of mask
+    :param int slide_level: level of mask
 
-    patch_size = size of patch scala integer n
-    n_samples = the number of output patches
+    :param int patch_size: size of patch scala integer n
+
+    :param int n_samples: the number of patches to extract (batch size)
 
     ...plaese complete me!
 
-    return: list of patches (RGB images), list of patch point (starting from left top)
+    :return list:
+
+        patches (RGB images),
+        list of patch points (starting from left top),
+        last used nonzero mask point's index
 
     """
     # def values updated from **opts
@@ -177,6 +207,7 @@ def patch_sampling(slide, mask, **opts):
         'n_samples' : 100,
         'patch_size' : 224,
         'slide_level' : 5,
+        'start_idx' : 0,
         'white_level' : 200,
         'white_threshold' : .3,
         'white_threshold_incr' : .05,
@@ -201,8 +232,9 @@ def patch_sampling(slide, mask, **opts):
 
     # bind to aux functions
     bfn = {
-        'get_index': None,
-        'is_sampling_over' : None,
+        'get_index'             : None,
+        'get_white_threshold'   : None,
+        'is_batch_over'         : None,
     }
     for n in bfn.keys():
         bfn[n] = globals()['{}__{}'.format(n, method)]
@@ -240,8 +272,10 @@ def patch_sampling(slide, mask, **opts):
     y_ws = (np.round(y_l * slide.level_downsamples[slide_level])).astype(int)
     cnt = 0         # good patch counter
     nt_cnt = 0      # not taken patch counter
-    p_iterator = bfn['get_index'](0, x_ln - 1)
-    while(not bfn['is_sampling_over'](cnt, n_samples)):
+    p_iterator = bfn['get_index'](start_idx, x_ln - 1)
+    p_idx = start_idx # just for init purposes
+    # while(not bfn['is_batch_over'](cnt, n_samples)):
+    while(cnt < n_samples):
         # pick an index...
         try:
             p_idx = p_iterator.next()
@@ -318,19 +352,14 @@ def patch_sampling(slide, mask, **opts):
             report['white_patches'] += 1
             nt_cnt += 1
 
-        # too many bad ones in this batch, tweak it. This is somewhat overdoing
-        if nt_cnt >= bad_batch_size:
-            if white_threshold >= white_threshold_max:
-                logger.warning('Max white threshold reached! Bailing out')
-                break
+        # possibly get an update
+        nt_cnt, white_threshold = bfn['get_white_threshold'](
+            nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr
+        )
+        if white_threshold == None:
+            logger.warning('Max white threshold reached! Bailing out')
+            break
 
-            white_threshold += white_threshold_incr
-            nt_cnt = 0
-            logger.debug(
-                'white_threshold += {}, now at {}'.format(
-                    white_threshold_incr, white_threshold
-                )
-            )
     # {end while}
 
     logger.info(
@@ -343,6 +372,6 @@ def patch_sampling(slide, mask, **opts):
             report['black_patches'], report['white_patches'], report['gray_patches']
         )
     )
-    logger.info('Extracted {} good patches'.format(cnt))
+    logger.info('Extracted {} good patches'.format(len(patch_point)))
 
-    return patch_list, patch_point
+    return patch_list, patch_point, p_idx

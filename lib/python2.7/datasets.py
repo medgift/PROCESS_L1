@@ -266,6 +266,19 @@ class Dataset(object):
 
 
     def store(self, info, patch_array, patch_point, tissue_type):
+        """Store data int our `self._h5db`.
+
+        :param np.array patch_array: array of patches
+
+        :param np.array patch_point: array of locations
+
+        :param str tissue_type: normal, tumor, whatever...
+
+        To-Do
+        +++++
+
+        Need to store arrays in batches as concatenating will sooner or later end up OOM!
+        """
         tree_path = self.h5db_tree_def.format(
             tissue_type,
             self.config['settings']['slide_level'],
@@ -273,6 +286,8 @@ class Dataset(object):
             info['patient'],
             info['node']
         )
+        # mmh, no easy way of appending array of different sizes... use batch
+        # n. instead ina different key
         self._h5db[tree_path + '/' + 'patches'] = patch_array
         self._h5db[tree_path + '/' + 'locations'] = patch_point
 
@@ -307,13 +322,12 @@ class Dataset(object):
                 opts = dict(
                     map(
                         lambda k: (k, settings[k]), (
-                            'method',
-                            'window',
                             'area_overlap',
                             'bad_batch_size',
                             'gray_threshold',
                             'margin_width_x',
                             'margin_width_y',
+                            'method',
                             'n_samples',
                             'patch_size',
                             'slide_level',
@@ -321,87 +335,109 @@ class Dataset(object):
                             'white_threshold',
                             'white_threshold_incr',
                             'white_threshold_max',
+                            'window',
                         )
                     )
                 )
                 opts['logger'] = self.logger
 
-                tum_patch_list, tum_patch_point = patch_sampling(
-                    slide, annotations_mask, **opts
-                )
-                if tum_patch_list and tum_patch_point:
-                    # prefer np arrays...
-                    tum_patch_array = np.asarray(tum_patch_list)
-                    tum_locations = np.array(tum_patch_point)
-                    # store it
-                    self.store(info, tum_patch_array, tum_locations, 'tumor')
-                else:
-                    self.logger.warning(
-                        'patient: {}: no tumor patch extracted'.format(patient)
+                # batch sample & store -- keep it small to avoid OOM!  In
+                # "linear" sampling mode, more batches might be needed, so
+                # take note of how may patches are extracted with the last
+                # index used
+                index = 0 # ignored in 'random' mode -- only one batch done
+                tum_patch_point = []
+                bcnt = 0
+                last_idx_t = last_idx_n = -1
+                while(True):
+                    self.logger.info("Starting batch {}".format(bcnt))
+
+                    opts['start_idx'] = last_idx_t + 1
+                    tum_patch_list, tum_patch_point, last_idx_t = patch_sampling(
+                        slide, annotations_mask, **opts
                     )
-                    continue
+                    if tum_patch_list and tum_patch_point:
+                        tum_patch_array = np.asarray(tum_patch_list)
+                        tum_locations = np.array(tum_patch_point)
+                        self.store(info, tum_patch_array, tum_locations, 'tumor')
+                    else:
+                        self.logger.info(
+                            'patient: {}: batch: {}: no tumor patch extracted'.format(
+                                patient, bcnt)
+                        )
+                        break
 
-                # reverting the tumor mask to find normal tissue and extract patches
-                #    Note :
-                #    normal_mask = tissu mask(morp_im) - tummor mask(annotations_mask)
+                    # reverting the tumor mask to find normal tissue and extract patches
+                    #    Note :
+                    #    normal_mask = tissu mask(morp_im) - tummor mask(annotations_mask)
 
-                ##### [BUG] ??? restart from here ##
+                    # [BUG] should we reinit the RND generator to sample exactly
+                    # the same points?
 
-                morp_im = get_morp_im(rgb_im)
-                normal_im = morp_im - annotations_mask  ## np.min(normal_im) := -1.0
-                normal_im = normal_im == 1.0
-                normal_im = (normal_im).astype(int)
-                # sampling normal patches with uniform distribution
-                nor_patch_list , nor_patch_point = patch_sampling(
-                    slide, normal_im, **opts
-                )
-                if nor_patch_point and nor_patch_list:
-                    nor_patch_array = np.asarray(nor_patch_list)
-                    normal_patches_locations = np.array(nor_patch_point)
-                    self.store(info, nor_patch_array, nor_patch_point, 'normal')
-                else:
-                    self.logger.warning(
-                        'patient: {}: no normal patch extracted'.format(patient)
+                    # [BUG] why the normal mask has many more points than tumor's?
+                    # This leads to imbalance between the number of tumor and
+                    # normal patches in linear sampling... And also, should normal
+                    # patches be extracted on the *same* indices as for tumor's?
+
+                    opts['start_idx'] = last_idx_n + 1
+                    morp_im = get_morp_im(rgb_im)
+                    normal_im = morp_im - annotations_mask  ## np.min(normal_im) := -1.0
+                    normal_im = normal_im == 1.0
+                    normal_im = (normal_im).astype(int)
+                    nor_patch_list , nor_patch_point, last_idx_n = patch_sampling(
+                        slide, normal_im, **opts
                     )
-                    continue
+                    if nor_patch_point and nor_patch_list:
+                        nor_patch_array = np.asarray(nor_patch_list)
+                        normal_patches_locations = np.array(nor_patch_point)
+                        self.store(info, nor_patch_array, nor_patch_point, 'normal')
+                    else:
+                        self.logger.info(
+                            'patient: {}: batch: {}: no normal patch extracted'.format(
+                                patient, bcnt)
+                        )
+                        break
 
-                # plotting the tumor locations in the XML file Drawing the
-                # normal patches sampling points tumor_locations.png shows the
-                # tumor patches locations in red and the normal patches
-                # locations in green
-                tumor_locations_im = rgb_im
-                plt.figure()
-                plt.imshow(tumor_locations_im)
-                for p_x, p_y in normal_patches_locations:
-                    plt.scatter(p_y, p_x, c='g')
-                    #cv2.circle(tumor_locations_im,(p_y,p_x),30,(0,255,0),10)
-                for p_x, p_y in tum_locations:
-                    plt.scatter(p_y, p_x, c='r')
-                    #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
+                    # plotting the tumor locations in the XML file Drawing the
+                    # normal patches sampling points tumor_locations.png shows the
+                    # tumor patches locations in red and the normal patches
+                    # locations in green
+                    tumor_locations_im = rgb_im
+                    plt.figure()
+                    plt.imshow(tumor_locations_im)
+                    for p_x, p_y in normal_patches_locations:
+                        plt.scatter(p_y, p_x, c='g')
+                        #cv2.circle(tumor_locations_im,(p_y,p_x),30,(0,255,0),10)
+                    for p_x, p_y in tum_locations:
+                        plt.scatter(p_y, p_x, c='r')
+                        #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
 
-                img_file = self.get_image_fname('tumor_locations.png', info)
-                plt.savefig(img_file)
-                plt.close()
-                self.logger.info('Tumor locations image saved to: {}'.format(img_file))
+                    img_file = self.get_image_fname('tumor_locations.png', info)
+                    plt.savefig(img_file)
+                    plt.close()
+                    self.logger.info('Tumor locations image saved to: {}'.format(img_file))
 
-                plt.figure()
-                plt.imshow(annotations_mask)
-                img_file = self.get_image_fname('annotation_mask.png', info)
-                plt.savefig(img_file)
-                plt.close()
-                self.logger.info('Annotation mask and normal tissue mask saved to: {}'.format(img_file))
+                    plt.figure()
+                    plt.imshow(annotations_mask)
+                    img_file = self.get_image_fname('annotation_mask.png', info)
+                    plt.savefig(img_file)
+                    plt.close()
+                    self.logger.info('Annotation mask and normal tissue mask saved to: {}'.format(img_file))
 
-                plt.figure()
-                plt.imshow(normal_im)
-                img_file = self.get_image_fname('normal_tissue_mask.png', info)
-                plt.savefig(img_file)
-                plt.close()
-                self.logger.info('Normal tissue mask saved to: {}'.format(img_file))
+                    plt.figure()
+                    plt.imshow(normal_im)
+                    img_file = self.get_image_fname('normal_tissue_mask.png', info)
+                    plt.savefig(img_file)
+                    plt.close()
+                    self.logger.info('Normal tissue mask saved to: {}'.format(img_file))
 
-                plt.close('all')
+                    self.tum_counter += len(tum_patch_array)
+                    self.nor_counter += len(nor_patch_array)
 
-                self.tum_counter += len(tum_patch_array)
-                self.nor_counter += len(nor_patch_array)
+                    self.logger.info("Done batch {}".format(bcnt))
+                    bcnt +=1
+
+                # plt.close('all')
 
 
     def __init__(
@@ -432,7 +468,7 @@ class Dataset(object):
         self.config = config
         self.logger = logger
 
-        self._h5db = hd.File(h5db_path, "w")
+        self._h5db = hd.File(h5db_path, 'a')
 
         # prepare a bioler-plate representation
         centre_paths = map(
