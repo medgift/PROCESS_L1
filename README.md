@@ -125,13 +125,17 @@ tissue coverage is computed as the integral over the selected region and
 patches with less than 80% of informative content are rejected. Mostly white
 and black patches are rejected as well.
 
-Patches are hierarchically stored in a h5 file with the following tree structure:
+Patches are hierarchically stored in a h5 file with the following tree
+structure (blank spaces added for readability sake):
 
-    Tumor  / Level N / Centre C / Patient P / Node No / patches
-    Tumor  / Level N / Centre C / Patient P / Node No / locations
-    Normal / Level N / Centre C / Patient P / Node No / patches
-    Normal / Level N / Centre C / Patient P / Node No / locations
+    tumor  / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch n.>]
+    tumor  / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch n.>]
+    normal / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch n.>]
+    normal / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch n.>]
     ...
+
+Where the extra key component "[/ batch n.]" is added when there are more
+patches to extract than `config[settings] : n_samples`.
 
 Results are stored in the directory specified by config file option `results_dir` defined
 under in section `[settings]`, which can be overridden by command line argument

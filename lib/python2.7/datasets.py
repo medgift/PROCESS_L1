@@ -1,4 +1,4 @@
-import os, glob, re
+import os, glob, re, errno
 from functions import preprocess, get_morp_im
 import numpy as np
 import matplotlib.pyplot as plt
@@ -50,8 +50,14 @@ class Dataset(object):
     slide_source_fld = ''
     xml_source_fld = ''
     results_dir = ''
-    h5db_path=''
-    h5db_tree_def = '{}/level{}/centre{}/patient{}/node{}'
+    h5db_path = ''
+    # old
+    #   h5db_tree_def = '{}/level{}/centre{}/patient{}/node{}'
+    h5db_tree_def = '{}/l{}/c{}/p{}/n{}'
+    # old
+    #   img_fname_prefix = 'level{}_centre{}_patient{}_node{}'
+    img_fname_prefix = 'l{}_c{}_p{}_n{}'
+    patient_sdir_fmt = 'l{}_c{}_p{}_n{}'
     files_counter = 0
     tum_counter = 0
     nor_counter = 0
@@ -71,8 +77,6 @@ class Dataset(object):
         # ...
     ]
 
-    img_fname_prefix = 'level{}_centre{}_patient{}_node{}'
-
     # pseudo private
     _h5db=None
     _centre_ranges = [
@@ -85,17 +89,73 @@ class Dataset(object):
         range(80, 99),
     ]
 
-    def get_image_fname(self, suffix, info={}):
+
+    def make_batch_dir(self, batch_n):
+        """Make a directory for batch results `batch_n`.
+
+        :param  int batch_n: batch number
+
+        :return str: something like
+
+            <self.results_dir>/<batch_n>
+        """
+        bdir = os.path.join(self.results_dir, str(batch_n))
+        try:
+            os.makedirs(bdir)
+        except OSError as e:
+            if e.errno == errno.EEXIST:
+                pass
+            else:
+                self.logger.fatal('{}: cannot make batch dir: {}'.format(bdir, e))
+                return None
+
+        return bdir
+
+    def make_patient_dir(self, info={}):
+        """Make a subdirectory for a `patient` in the results directory.
+
+        :param  dict info: must have keys
+
+                'centre'    : <CID>,
+                'patient'   : '<PID>',
+                'node'      : '<NID>'
+
+        :return str: something like
+
+            <self.results_dir>/l<slide_level>_c<CID>_p<PID>_n<NID>
+        """
+        pdir = os.path.join(
+           self.results_dir,
+            (self.patient_sdir_fmt).format(
+                self.config['settings']['slide_level'],
+                info['centre'],
+                info['patient'],
+                info['node']
+            )
+        )
+        try:
+            os.makedirs(pdir)
+        except OSError as e:
+            if e.errno == errno.EEXIST:
+                pass
+            else:
+                self.logger.error('{}: cannot make patient dir: {}'.format(pdir, e))
+                return None
+
+        return bdir
+
+
+    def get_image_fname_by_info(self, suffix, info={}, batch=''):
         """Get an image file name composed of
 
-             <self.results_dir>/<self.img_fname_prefix>_<suffix>
+             <self.results_dir>/<batch>/<self.img_fname_prefix>_<suffix>.png
 
         where <self.img_fname_prefix> has placeholders for values in the
         `info` dict.
 
         :param  str directory: path to the results directory
 
-        :param  str suffix: specific image suffix
+        :param  str suffix: specific image suffix *without* the extension
 
         :param  dict info: must have keys
 
@@ -105,10 +165,42 @@ class Dataset(object):
 
         :return str: something like:
 
-             results_dir/level<slide_level>_centre<CID>_patient<PID>_node<NID>_<suffix>
+             results_dir/<batch>/l<slide_level>_c<CID>_p<PID>_n<NID>_<suffix>.png
         """
         return os.path.join(
-            self.results_dir,
+            self.results_dir, str(batch),
+            (self.img_fname_prefix + '_' + suffix).format(
+                self.config['settings']['slide_level'],
+                info['centre'],
+                info['patient'],
+                info['node']
+            )
+        )
+
+    def get_image_fname(self, suffix, info={}, patient_dir='', batch=''):
+        """Get an image file name composed of
+
+             <self.results_dir>/<batch>/<self.img_fname_prefix>_<suffix>.png
+
+        where <self.img_fname_prefix> has placeholders for values in the
+        `info` dict.
+
+        :param  str directory: path to the results directory
+
+        :param  str suffix: specific image suffix *without* the extension
+
+        :param  dict info: must have keys
+
+                'centre'    : <CID>,
+                'patient'   : '<PID>',
+                'node'      : '<NID>'
+
+        :return str: something like:
+
+             results_dir/<batch>/l<slide_level>_c<CID>_p<PID>_n<NID>_<suffix>.png
+        """
+        return os.path.join(
+            self.results_dir, str(batch),
             (self.img_fname_prefix + '_' + suffix).format(
                 self.config['settings']['slide_level'],
                 info['centre'],
@@ -265,8 +357,15 @@ class Dataset(object):
         }
 
 
-    def store(self, info, patch_array, patch_point, tissue_type):
-        """Store data int our `self._h5db`.
+    def store(self, info, patch_array, patch_point, tissue_type, batch=None):
+        """Store a dataset of patches and locations int our `self._h5db` keyed
+        at, respectively (blanks added for readibility):
+
+            <tissue_type>/LevelN/CentreC/PatientP/NodeNo/[<batch>/]<patch_array>
+            <tissue_type>/LevelN/CentreC/PatientP/NodeNo/[<batch>/]<patch_point>
+
+        Intermediate key components comes from arg `info`. By default no
+        "<batch>/" component is added.
 
         :param np.array patch_array: array of patches
 
@@ -274,10 +373,15 @@ class Dataset(object):
 
         :param str tissue_type: normal, tumor, whatever...
 
+        :param int batch: sampling batch number
+
+        :return None
+
         To-Do
         +++++
 
         Need to store arrays in batches as concatenating will sooner or later end up OOM!
+
         """
         tree_path = self.h5db_tree_def.format(
             tissue_type,
@@ -286,8 +390,11 @@ class Dataset(object):
             info['patient'],
             info['node']
         )
-        # mmh, no easy way of appending array of different sizes... use batch
-        # n. instead ina different key
+        if not batch == None:
+            tree_path += '/{}'.format(batch)
+
+        self.logger.debug("storing key: {}".format(tree_path))
+
         self._h5db[tree_path + '/' + 'patches'] = patch_array
         self._h5db[tree_path + '/' + 'locations'] = patch_point
 
@@ -312,6 +419,11 @@ class Dataset(object):
                 slide_path = self.get_wsi_path(centre, patient)
                 xml_path = self.get_annotation_path(centre, patient)
                 info = self.get_info(centre, patient)
+
+                pat_res_dir = self.make_patient_dir(info)
+                if not pat_res_dir:
+                    self.logger.error("patient {}: problems with results dir...".format(patient))
+                    continue
 
                 slide, annotations_mask, rgb_im, im_contour = preprocess(
                     slide_path,
@@ -350,7 +462,9 @@ class Dataset(object):
                 bcnt = 0
                 last_idx_t = last_idx_n = -1
                 while(True):
-                    self.logger.info("Starting batch {}".format(bcnt))
+                    # TO-DO: a batch of two sampling run (tumor + normal)
+                    # should be better encapsulated...
+                    self.logger.info("patient {}: >>> Starting batch {}".format(patient, bcnt))
 
                     opts['start_idx'] = last_idx_t + 1
                     tum_patch_list, tum_patch_point, last_idx_t = patch_sampling(
@@ -359,12 +473,15 @@ class Dataset(object):
                     if tum_patch_list and tum_patch_point:
                         tum_patch_array = np.asarray(tum_patch_list)
                         tum_locations = np.array(tum_patch_point)
-                        self.store(info, tum_patch_array, tum_locations, 'tumor')
+                        self.store(info, tum_patch_array, tum_locations, 'tumor', bcnt)
                     else:
                         self.logger.info(
-                            'patient: {}: batch: {}: no tumor patch extracted'.format(
-                                patient, bcnt)
+                            'patient {}: batch {}: no tumor patch extracted'.format(
+                                patient, bcnt
+                            )
                         )
+                        # [BUG] is it OK to bail out if more normal nonzero
+                        # points are available? See also [BUGS] below
                         break
 
                     # reverting the tumor mask to find normal tissue and extract patches
@@ -379,22 +496,23 @@ class Dataset(object):
                     # normal patches in linear sampling... And also, should normal
                     # patches be extracted on the *same* indices as for tumor's?
 
-                    opts['start_idx'] = last_idx_n + 1
                     morp_im = get_morp_im(rgb_im)
                     normal_im = morp_im - annotations_mask  ## np.min(normal_im) := -1.0
                     normal_im = normal_im == 1.0
                     normal_im = (normal_im).astype(int)
+                    opts['start_idx'] = last_idx_n + 1
                     nor_patch_list , nor_patch_point, last_idx_n = patch_sampling(
                         slide, normal_im, **opts
                     )
                     if nor_patch_point and nor_patch_list:
                         nor_patch_array = np.asarray(nor_patch_list)
                         normal_patches_locations = np.array(nor_patch_point)
-                        self.store(info, nor_patch_array, nor_patch_point, 'normal')
+                        self.store(info, nor_patch_array, nor_patch_point, 'normal', bcnt)
                     else:
                         self.logger.info(
-                            'patient: {}: batch: {}: no normal patch extracted'.format(
-                                patient, bcnt)
+                            'patient {}: batch {}: no normal patch extracted'.format(
+                                patient, bcnt
+                            )
                         )
                         break
 
@@ -412,29 +530,46 @@ class Dataset(object):
                         plt.scatter(p_y, p_x, c='r')
                         #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
 
-                    img_file = self.get_image_fname('tumor_locations.png', info)
+                    img_file = self.get_image_fname('tumor_locations', info, pat_res_dir, bcnt)
                     plt.savefig(img_file)
                     plt.close()
-                    self.logger.info('Tumor locations image saved to: {}'.format(img_file))
+                    self.logger.info(
+                        'patient {}: batch {}: tumor locations image saved to: {}'.format(
+                            patient, bcnt, img_file
+                        )
+                    )
 
                     plt.figure()
                     plt.imshow(annotations_mask)
-                    img_file = self.get_image_fname('annotation_mask.png', info)
+                    img_file = self.get_image_fname('annotation_mask', info, pat_res_dir, bcnt)
                     plt.savefig(img_file)
                     plt.close()
-                    self.logger.info('Annotation mask and normal tissue mask saved to: {}'.format(img_file))
+                    self.logger.info(
+                        'patient {}: batch {}: Annotation mask and normal tissue mask saved to: {}'.format(
+                            patient, bcnt, img_file
+                        )
+                    )
 
                     plt.figure()
                     plt.imshow(normal_im)
-                    img_file = self.get_image_fname('normal_tissue_mask.png', info)
+                    img_file = self.get_image_fname('normal_tissue_mask', info, pat_res_dir, bcnt)
                     plt.savefig(img_file)
                     plt.close()
-                    self.logger.info('Normal tissue mask saved to: {}'.format(img_file))
+                    self.logger.info(
+                        'patient {}: batch {}: Normal tissue mask saved to: {}'.format(
+                            patient, bcnt, img_file
+                        )
+                    )
 
                     self.tum_counter += len(tum_patch_array)
                     self.nor_counter += len(nor_patch_array)
 
-                    self.logger.info("Done batch {}".format(bcnt))
+                    self.logger.info("patient {}: <<< Done batch {}".format(patient, bcnt))
+
+                    if last_idx_n == None:
+                        # in 'random' method, this tells us that we're done sampling
+                        break
+
                     bcnt +=1
 
                 # plt.close('all')
@@ -468,7 +603,7 @@ class Dataset(object):
         self.config = config
         self.logger = logger
 
-        self._h5db = hd.File(h5db_path, 'a')
+        self._h5db = hd.File(h5db_path, 'w')
 
         # prepare a bioler-plate representation
         centre_paths = map(
@@ -517,12 +652,6 @@ class Dataset(object):
             msg = 'Problems with patient list: see errors above.'
             logger.fatal(msg)
             raise RuntimeError(msg)
-
-
-        # if valid_patients:
-        #     msg = 'some patients were not found in dataset:\n%s' % pp.pformat(valid_patients)
-        #     logger.fatal(msg)
-        #     raise RuntimeError(msg)
 
         if not annots:
             msg = 'no (requested) patient found in dataset:\n%s'

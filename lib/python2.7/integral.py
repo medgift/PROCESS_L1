@@ -192,7 +192,7 @@ def patch_sampling(slide, mask, **opts):
 
         patches (RGB images),
         list of patch points (starting from left top),
-        last used nonzero mask point's index
+        last used nonzero mask point's index or None (random sampling only)
 
     """
     # def values updated from **opts
@@ -373,5 +373,9 @@ def patch_sampling(slide, mask, **opts):
         )
     )
     logger.info('Extracted {} good patches'.format(len(patch_point)))
+
+    # in 'random' method, only one batch is done, so it doens't make sense to
+    # return the last index. Instead signal that we're over with sampling.
+    p_idx = None if method == 'random' else p_idx
 
     return patch_list, patch_point, p_idx
