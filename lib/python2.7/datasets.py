@@ -112,7 +112,9 @@ class Dataset(object):
         return bdir
 
     def make_patient_dir(self, info={}):
-        """Make a subdirectory for a `patient` in the results directory.
+        """Make a subdirectory for a `patient` in the results directory using
+        <self.patient_sdir_fmt> which has placeholders for values in the `info`
+        dict.
 
         :param  dict info: must have keys
 
@@ -123,6 +125,7 @@ class Dataset(object):
         :return str: something like
 
             <self.results_dir>/l<slide_level>_c<CID>_p<PID>_n<NID>
+
         """
         pdir = os.path.join(
            self.results_dir,
@@ -142,7 +145,7 @@ class Dataset(object):
                 self.logger.error('{}: cannot make patient dir: {}'.format(pdir, e))
                 return None
 
-        return bdir
+        return pdir
 
 
     def get_image_fname_by_info(self, suffix, info={}, batch=''):
@@ -159,7 +162,7 @@ class Dataset(object):
 
         :param  dict info: must have keys
 
-                'centre'    : <CID>,
+                'centre'    : '<CID>',
                 'patient'   : '<PID>',
                 'node'      : '<NID>'
 
@@ -177,36 +180,29 @@ class Dataset(object):
             )
         )
 
-    def get_image_fname(self, suffix, info={}, patient_dir='', batch=''):
+    def get_image_fname(self, patient_dir, suffix, info={}, batch=None):
         """Get an image file name composed of
 
-             <self.results_dir>/<batch>/<self.img_fname_prefix>_<suffix>.png
+             <self.results_dir>/<patient_dir>/<suffix>_<batch>.png
 
         where <self.img_fname_prefix> has placeholders for values in the
-        `info` dict.
+        `info` dict.'<batch>' will be formatted to 4 chars and 0-left-padded.
 
-        :param  str directory: path to the results directory
+        :param  str patient_dir: path to the results directory (must exist)
 
         :param  str suffix: specific image suffix *without* the extension
 
-        :param  dict info: must have keys
+        :return str: if <patient_dir> := 'l<slide_level>_c<CID>_p<PID>_n<NID>',
+        something like:
 
-                'centre'    : <CID>,
-                'patient'   : '<PID>',
-                'node'      : '<NID>'
+             results_dir/l<slide_level>_c<CID>_p<PID>_n<NID>/<suffix>_<batch>.png
 
-        :return str: something like:
-
-             results_dir/<batch>/l<slide_level>_c<CID>_p<PID>_n<NID>_<suffix>.png
         """
+
         return os.path.join(
-            self.results_dir, str(batch),
-            (self.img_fname_prefix + '_' + suffix).format(
-                self.config['settings']['slide_level'],
-                info['centre'],
-                info['patient'],
-                info['node']
-            )
+            patient_dir, suffix +
+            ("_{:0>4}".format(batch) if not batch == None  else '')
+            + '.png',
         )
 
     def pid2cid(self, pid):
@@ -401,7 +397,7 @@ class Dataset(object):
 
     def extract_patches(self):
         """
-        (doc please)
+        (more doc please)
         """
         # ...useless!?
         # self.set_files_counter(self.count_annotation_files())
@@ -431,6 +427,38 @@ class Dataset(object):
                     slide_level=settings['slide_level']
                 )
 
+                # reverting the tumor mask to find normal tissue and extract patches
+                # Note :
+                #    normal_mask = tissu mask(morp_im) - tummor mask(annotations_mask)
+                morp_im = get_morp_im(rgb_im)
+                normal_im = morp_im - annotations_mask  # np.min(normal_im) := -1.0
+                normal_im = normal_im == 1.0
+                normal_im = (normal_im).astype(int)
+
+                # masks are the same for any sample batch ;-)
+                # [TO-DO] make switchable from config/CL
+                plt.figure()
+                plt.imshow(annotations_mask)
+                img_file = self.get_image_fname(pat_res_dir, 'annotation_mask', info)
+                plt.savefig(img_file)
+                plt.close()
+                self.logger.info(
+                    'patient {}: Annotation mask image saved to: {}'.format(
+                        patient, img_file
+                    )
+                )
+
+                plt.figure()
+                plt.imshow(normal_im)
+                img_file = self.get_image_fname(pat_res_dir, 'normal_tissue_mask', info)
+                plt.savefig(img_file)
+                plt.close()
+                self.logger.info(
+                    'patient {}: Normal tissue mask image saved to: {}'.format(
+                        patient, img_file
+                    )
+                )
+
                 opts = dict(
                     map(
                         lambda k: (k, settings[k]), (
@@ -454,17 +482,35 @@ class Dataset(object):
                 opts['logger'] = self.logger
 
                 # batch sample & store -- keep it small to avoid OOM!  In
-                # "linear" sampling mode, more batches might be needed, so
-                # take note of how may patches are extracted with the last
-                # index used
+                # "linear" sampling mode, more batches might be needed, so go
+                # for a run and get the extracted pathes and the last
+                # index. Loop until no patches come out
+
+                # [TO-DO] store info in _per-patient_ H5 DB
+
+                # a patient case (:= slide) the tumor annotation mask is
+                # usually (much) smaller than the normal tissue mask, thus a
+                # different number of batches is needed to exract all the
+                # tumor and normal patches. So we compute then normal tissue
+                # mask once. Apart from that, there's no relation between
+                # tumor and normal patches, hence we batch-loop two times: a
+                # first time for the tumor case and a second time for the
+                # normal case.
+
+
                 index = 0 # ignored in 'random' mode -- only one batch done
                 tum_patch_point = []
-                bcnt = 0
+                bcnt_t, bcnt_n = 0, 0
                 last_idx_t = last_idx_n = -1
+
+                # *** [BUG] *** split loops doesn't work if we want to show
+                # *** images: dependency on "normal_patches_locations" :-(
+
+                # tumors
                 while(True):
                     # TO-DO: a batch of two sampling run (tumor + normal)
                     # should be better encapsulated...
-                    self.logger.info("patient {}: >>> Starting batch {}".format(patient, bcnt))
+                    self.logger.info("patient {}: >>> [tumor] starting batch {}".format(patient, bcnt_t))
 
                     opts['start_idx'] = last_idx_t + 1
                     tum_patch_list, tum_patch_point, last_idx_t = patch_sampling(
@@ -473,45 +519,11 @@ class Dataset(object):
                     if tum_patch_list and tum_patch_point:
                         tum_patch_array = np.asarray(tum_patch_list)
                         tum_locations = np.array(tum_patch_point)
-                        self.store(info, tum_patch_array, tum_locations, 'tumor', bcnt)
+                        self.store(info, tum_patch_array, tum_locations, 'tumor', bcnt_t)
                     else:
                         self.logger.info(
-                            'patient {}: batch {}: no tumor patch extracted'.format(
-                                patient, bcnt
-                            )
-                        )
-                        # [BUG] is it OK to bail out if more normal nonzero
-                        # points are available? See also [BUGS] below
-                        break
-
-                    # reverting the tumor mask to find normal tissue and extract patches
-                    #    Note :
-                    #    normal_mask = tissu mask(morp_im) - tummor mask(annotations_mask)
-
-                    # [BUG] should we reinit the RND generator to sample exactly
-                    # the same points?
-
-                    # [BUG] why the normal mask has many more points than tumor's?
-                    # This leads to imbalance between the number of tumor and
-                    # normal patches in linear sampling... And also, should normal
-                    # patches be extracted on the *same* indices as for tumor's?
-
-                    morp_im = get_morp_im(rgb_im)
-                    normal_im = morp_im - annotations_mask  ## np.min(normal_im) := -1.0
-                    normal_im = normal_im == 1.0
-                    normal_im = (normal_im).astype(int)
-                    opts['start_idx'] = last_idx_n + 1
-                    nor_patch_list , nor_patch_point, last_idx_n = patch_sampling(
-                        slide, normal_im, **opts
-                    )
-                    if nor_patch_point and nor_patch_list:
-                        nor_patch_array = np.asarray(nor_patch_list)
-                        normal_patches_locations = np.array(nor_patch_point)
-                        self.store(info, nor_patch_array, nor_patch_point, 'normal', bcnt)
-                    else:
-                        self.logger.info(
-                            'patient {}: batch {}: no normal patch extracted'.format(
-                                patient, bcnt
+                            'patient {}: batch {}: no (more) tumor patches'.format(
+                                patient, bcnt_t
                             )
                         )
                         break
@@ -525,54 +537,60 @@ class Dataset(object):
                     plt.imshow(tumor_locations_im)
                     for p_x, p_y in normal_patches_locations:
                         plt.scatter(p_y, p_x, c='g')
-                        #cv2.circle(tumor_locations_im,(p_y,p_x),30,(0,255,0),10)
                     for p_x, p_y in tum_locations:
                         plt.scatter(p_y, p_x, c='r')
-                        #cv2.circle(tumor_locations_im,(p_y,p_x),30,(255,0,0), 10)
 
-                    img_file = self.get_image_fname('tumor_locations', info, pat_res_dir, bcnt)
+                    img_file = self.get_image_fname(pat_res_dir, 'tumor_locations', info, bcnt_t)
                     plt.savefig(img_file)
                     plt.close()
                     self.logger.info(
                         'patient {}: batch {}: tumor locations image saved to: {}'.format(
-                            patient, bcnt, img_file
-                        )
-                    )
-
-                    plt.figure()
-                    plt.imshow(annotations_mask)
-                    img_file = self.get_image_fname('annotation_mask', info, pat_res_dir, bcnt)
-                    plt.savefig(img_file)
-                    plt.close()
-                    self.logger.info(
-                        'patient {}: batch {}: Annotation mask and normal tissue mask saved to: {}'.format(
-                            patient, bcnt, img_file
-                        )
-                    )
-
-                    plt.figure()
-                    plt.imshow(normal_im)
-                    img_file = self.get_image_fname('normal_tissue_mask', info, pat_res_dir, bcnt)
-                    plt.savefig(img_file)
-                    plt.close()
-                    self.logger.info(
-                        'patient {}: batch {}: Normal tissue mask saved to: {}'.format(
-                            patient, bcnt, img_file
+                            patient, bcnt_t, img_file
                         )
                     )
 
                     self.tum_counter += len(tum_patch_array)
+
+                    self.logger.info("patient {}: <<< [tumor] done batch {}".format(patient, bcnt_t))
+
+                    if last_idx_t == None:
+                        # in 'random' method, this tells us that we're done sampling
+                        break
+
+                    bcnt_t +=1
+
+
+                # normal tissue
+                while(True):
+                    self.logger.info("patient {}: >>> [normal] starting batch {}".format(patient, bcnt_n))
+
+                    opts['start_idx'] = last_idx_n + 1
+                    nor_patch_list , nor_patch_point, last_idx_n = patch_sampling(
+                        slide, normal_im, **opts
+                    )
+                    if nor_patch_point and nor_patch_list:
+                        nor_patch_array = np.asarray(nor_patch_list)
+                        normal_patches_locations = np.array(nor_patch_point)
+                        self.store(info, nor_patch_array, nor_patch_point, 'normal', bcnt_n)
+                    else:
+                        self.logger.info(
+                            'patient {}: batch {}: no (more) normal patches'.format(
+                                patient, bcnt_n
+                            )
+                        )
+                        break
+
+
+
                     self.nor_counter += len(nor_patch_array)
 
-                    self.logger.info("patient {}: <<< Done batch {}".format(patient, bcnt))
+                    self.logger.info("patient {}: <<< [normal] done batch {}".format(patient, bcnt_n))
 
                     if last_idx_n == None:
                         # in 'random' method, this tells us that we're done sampling
                         break
 
-                    bcnt +=1
-
-                # plt.close('all')
+                    bcnt_n +=1
 
 
     def __init__(

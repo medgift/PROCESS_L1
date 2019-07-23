@@ -165,6 +165,12 @@ def patch_sampling(slide, mask, **opts):
     """Patch sampling on whole slide image by random points over an uniform
     distribution.
 
+    TO-DO
+    +++++
+
+    Optimize: compute non zero list in the caller and pass only the intersting
+    part -- will help in batch linear sampling...
+
     Arguments
     +++++++++
 
