@@ -110,7 +110,8 @@ def_config = {
     # TO-DO: clarify items' meaning
     'load'              : {
         'PWD'                   : 'results/intermediate',       # 'results' is interpolated in `config.ini`
-        'h5file'                : 'patches.hdf5',
+        # removed in favor of per-slide DB files
+        # 'h5file'                : 'patches.hdf5',
     },
 }
 

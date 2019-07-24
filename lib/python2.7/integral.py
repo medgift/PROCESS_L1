@@ -8,7 +8,13 @@ TO-DO:
 * use proper point(x, y) class [over np.arrays?]
 * develop a `sampler` class -- too many kludges down there ^_^
 """
+logger = None
 
+def mod_init(mlogger=None):
+    """Oh please, please, turn me into a class ;-)
+    """
+    global logger
+    logger = mlogger
 
 def is_white_patch(cur_patch,white_percentage):
     ''' Basic is_white check: checks if the extracted patch is white
@@ -126,7 +132,9 @@ def nonzero_range(mask, window=[]):
 
     :return list, list: as np arrays
     """
+    global logger
     x_l, y_l = mask.nonzero()
+    logger.debug("Original mask has {} x {} nonzero points".format(len(x_l), len(y_l)))
     if window:
         x_ln, y_ln = len(x_l), len(y_l)
         x_l = x_l[int(window[0]/100.*x_ln):int(window[1]/100.*x_ln)]
@@ -139,18 +147,19 @@ def get_white_threshold__random(
         nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr
 ):
     """Too many bad ones in this batch, tweak it"""
-    # globals nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr, logger
+    global logger
+
     if nt_cnt >= bad_batch_size:
         if white_threshold >= white_threshold_max:
             return None, None
 
         white_threshold += white_threshold_incr
         nt_cnt = 0
-        # logger.debug(
-        #     'white_threshold += {}, now at {}'.format(
-        #         white_threshold_incr, white_threshold
-        #     )
-        # )
+        logger.debug(
+            'white_threshold += {}, now at {}'.format(
+                white_threshold_incr, white_threshold
+            )
+        )
         return nt_cnt, white_threshold
     return nt_cnt, white_threshold
 
@@ -161,7 +170,7 @@ def get_white_threshold__linear(
     return nt_cnt, white_threshold
 
 
-def patch_sampling(slide, mask, **opts):
+def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
     """Patch sampling on whole slide image by random points over an uniform
     distribution.
 
@@ -174,8 +183,10 @@ def patch_sampling(slide, mask, **opts):
     Arguments
     +++++++++
 
-    slide = OpenSlide Object
-    mask = mask image ( 0-1 int type nd-array)
+    :param obj slide: OpenSlide Object
+    :param obj mask: mask image as (0, 1) int Numpy array
+
+    :param list nonzerox, nonzeroy: Numpy arrays of nonzero points over `mask`
 
 
     Keyword arguments
@@ -201,12 +212,13 @@ def patch_sampling(slide, mask, **opts):
         last used nonzero mask point's index or None (random sampling only)
 
     """
+    global logger
+
     # def values updated from **opts
     dopts = {
         'area_overlap' : .6,
         'bad_batch_size' : 500,
         'gray_threshold' : 90,
-        'logger' : None,
         'margin_width_x' : 250, # as per original code, watch out!
         'margin_width_y' : 50,  # ditto
         'method' : 'random',
@@ -218,10 +230,9 @@ def patch_sampling(slide, mask, **opts):
         'white_threshold' : .3,
         'white_threshold_incr' : .05,
         'white_threshold_max' : .7,
-        'window' : []
     }
     for dk in dopts:
-        # [BUG] if called with a missing key, won't get the deault!?
+        # [BUG] if called with a missing key, won't get the default!?
         try:
             dopts[dk] = opts.pop(dk, None)
         except KeyError as k:
@@ -232,7 +243,7 @@ def patch_sampling(slide, mask, **opts):
 
     if opts:
         # leftovers...
-        raise RuntimeError('unexpected options {}'.format(opts))
+        raise RuntimeError, 'Unexpected options {}'.format(opts)
 
     logger.debug("kw opts:\n{}.".format(dopts))
 
@@ -245,8 +256,7 @@ def patch_sampling(slide, mask, **opts):
     for n in bfn.keys():
         bfn[n] = globals()['{}__{}'.format(n, method)]
         if not callable(bfn[n]):
-            logger.fatal('[BUG] {} => {}: invalid aux function binding'.format(n, bfn[n]))
-            return None, None
+            raise RuntimeError, '[BUG] {} => {}: invalid aux function binding'.format(n, bfn[n])
 
     report = {
         'out_of_boundary' : 0,
@@ -259,19 +269,19 @@ def patch_sampling(slide, mask, **opts):
     patch_point = []
     # patch size at given level or resolution
     level_patch_size = int(patch_size / slide.level_downsamples[slide_level])
-    # lists of nonzero points in the mask
-    if window:
-        logger.info(
-            "Restricting nonzero points range to {}%, {}%".format(window[0], window[1])
-        )
-    x_l, y_l = nonzero_range(mask, window)
+
+    x_l, y_l = nonzerox, nonzeroy
     x_ln, y_ln = len(x_l), len(y_l)
 
-    logger.info('Mask has {} x {} nonzero points'.format(x_ln, len(y_l)))
+    logger.info('Working mask has {} x {} nonzero points'.format(x_ln, len(y_l)))
 
     if x_ln < level_patch_size * 2:
-        logger.error("Not enough nonzero mask points for at least 2 patches. Bailing out.")
-        return None, None
+        logger.info(
+            "Not enough nonzero mask points for at least 2 patches ({} < {})".format(
+                x_ln, level_patch_size
+            )
+        )
+        return [], [], None
 
     # computing the actual level of resolution (dot product)
     x_ws = (np.round(x_l * slide.level_downsamples[slide_level])).astype(int)
@@ -378,7 +388,7 @@ def patch_sampling(slide, mask, **opts):
             report['black_patches'], report['white_patches'], report['gray_patches']
         )
     )
-    logger.info('Extracted {} good patches'.format(len(patch_point)))
+    logger.info('Extracted {} patches'.format(len(patch_point)))
 
     # in 'random' method, only one batch is done, so it doens't make sense to
     # return the last index. Instead signal that we're over with sampling.

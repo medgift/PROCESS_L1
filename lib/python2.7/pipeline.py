@@ -53,6 +53,7 @@ def extract(
 
     c17_cfg = config['camelyon17'];
     data_dir = config['settings']['data_dir']
+    report = {}
 
     with Dataset(
             name='camelyon17',
@@ -61,18 +62,19 @@ def extract(
             xml_source_fld=os.path.join(data_dir, c17_cfg['xml_source_fld']),
             centres=c17_cfg['training_centres'],
             results_dir=results_dir,
-            h5db_path=os.path.join(results_dir, config['load']['h5file']),
+            # h5db_path=os.path.join(results_dir, config['load']['h5file']),
             logger=logger,
             config=config        # **FIX-ME** possibly overkill
     ) as c17_dset:
         ############################################################################
-        # Core processing. Monitoring running time... [BUG] this is not the best way
+        # Core processing. Monitoring running time... maybe, not the best way
         start_time = time.time()
         c17_dset.extract_patches()
         patch_extraction_elapsed = time.time() - start_time
         #
         ############################################################################
 
+        report = c17_dset.report
         tot_patches = c17_dset.tum_counter +  c17_dset.nor_counter
 
     if tot_patches:
@@ -82,13 +84,19 @@ def extract(
     else:
         logger.warning('[extract] No patch extracted')
 
-    logger.info('[extract] step done!')
+    logger.info(
+        '[extract] step done with {} errors and {} warnings'.format(
+            report['errors'], report['warnings']
+        )
+    )
+    if report['errors']:
+        raise RuntimeError, "There were errors :-( See logs..."
 
 
 def load(config, results_dir, logger):
     '''Load already extracted patches from an existing HDF5 database'''
 
-    raise ApplicationError('load: pipeline step under revision')
+    raise RuntimeError, 'load: pipeline step under revision'
 
     logger.info('[load] step starting...')
 
@@ -140,7 +148,7 @@ def train(config, results_dir, logger):
     could use pre-extracted patches to train the model
     '''
 
-    raise ApplicationError('train: pipeline step under revision')
+    raise RuntimeError, 'train: pipeline step under revision'
 
     logger.info('[train] Initialising Horovod...')
     if not HAS_TENSORFLOW:

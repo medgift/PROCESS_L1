@@ -3,7 +3,7 @@ from functions import preprocess, get_morp_im
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-from integral import patch_sampling
+import integral
 import openslide
 import pprint as pp
 import h5py as hd
@@ -51,6 +51,7 @@ class Dataset(object):
     xml_source_fld = ''
     results_dir = ''
     h5db_path = ''
+    h5db_bname = 'patches'
     # old
     #   h5db_tree_def = '{}/level{}/centre{}/patient{}/node{}'
     h5db_tree_def = '{}/l{}/c{}/p{}/n{}'
@@ -78,7 +79,7 @@ class Dataset(object):
     ]
 
     # pseudo private
-    _h5db=None
+    _h5db = None
     _centre_ranges = [
         # <CID>-indexed centre to patient static mapping
         #   (<start>, <end>), (...)
@@ -88,7 +89,10 @@ class Dataset(object):
         range(60, 79),
         range(80, 99),
     ]
-
+    report = {
+        'errors' : 0,
+        'warnings' : 0
+    }
 
     def make_batch_dir(self, batch_n):
         """Make a directory for batch results `batch_n`.
@@ -372,12 +376,6 @@ class Dataset(object):
         :param int batch: sampling batch number
 
         :return None
-
-        To-Do
-        +++++
-
-        Need to store arrays in batches as concatenating will sooner or later end up OOM!
-
         """
         tree_path = self.h5db_tree_def.format(
             tissue_type,
@@ -395,18 +393,54 @@ class Dataset(object):
         self._h5db[tree_path + '/' + 'locations'] = patch_point
 
 
+    def store_patient(
+            self, info, patch_array, patch_point, tissue_type, h5db,
+            batch=None
+    ):
+        """Store a dataset of patches and locations for a given patient into `h5db`
+        keyed at, respectively (blanks added for readibility):
+
+            <tissue_type>/LevelN/CentreC/PatientP/NodeNo/[<batch>/]<patch_array>
+            <tissue_type>/LevelN/CentreC/PatientP/NodeNo/[<batch>/]<patch_point>
+
+        Intermediate key components comes from arg `info`. By default no
+        "<batch>/" component is added.
+
+        :param np.array patch_array: array of patches
+
+        :param np.array patch_point: array of locations
+
+        :param str tissue_type: normal, tumor, whatever...
+
+        :param int batch: sampling batch number
+
+        :param obj h5db: a pymod:h5py open DBfile
+
+        :return None
+
+        """
+        tree_path = self.h5db_tree_def.format(
+            tissue_type,
+            self.config['settings']['slide_level'],
+            info['centre'],
+            info['patient'],
+            info['node']
+        )
+        if not batch == None:
+            tree_path += '/{}'.format(batch)
+
+        self.logger.debug("storing key: {}".format(tree_path))
+
+        h5db[tree_path + '/' + 'patches'] = patch_array
+        h5db[tree_path + '/' + 'locations'] = patch_point
+
+
     def extract_patches(self):
         """
         (more doc please)
         """
-        # ...useless!?
-        # self.set_files_counter(self.count_annotation_files())
-
-        # self.logger.info(
-        #     '[datasets] {0} [extract_patches] {1} total annotation files.'.
-        #     format(self.name, self.files_counter)
-        # )
-
+        errors = 0
+        warnings = 0
         settings = self.config['settings']
         for centre in self.centres:
             for patient in self.get_patients(centre):
@@ -419,6 +453,19 @@ class Dataset(object):
                 pat_res_dir = self.make_patient_dir(info)
                 if not pat_res_dir:
                     self.logger.error("patient {}: problems with results dir...".format(patient))
+                    errors += 1
+                    continue
+
+                h5db_path = os.path.join(pat_res_dir, self.h5db_bname + '.h5')
+                try:
+                    h5db = hd.File(h5db_path, 'w')
+                except Exception as e:
+                    self.logger.error(
+                        "patient {}: can't open my H5 DB '{}': {} ".format(
+                            patient, h5db_path, e
+                        )
+                    )
+                    errors += 1
                     continue
 
                 slide, annotations_mask, rgb_im, im_contour = preprocess(
@@ -426,6 +473,7 @@ class Dataset(object):
                     xml_path,
                     slide_level=settings['slide_level']
                 )
+
 
                 # reverting the tumor mask to find normal tissue and extract patches
                 # Note :
@@ -475,11 +523,9 @@ class Dataset(object):
                             'white_threshold',
                             'white_threshold_incr',
                             'white_threshold_max',
-                            'window',
                         )
                     )
                 )
-                opts['logger'] = self.logger
 
                 # batch sample & store -- keep it small to avoid OOM!  In
                 # "linear" sampling mode, more batches might be needed, so go
@@ -490,88 +536,42 @@ class Dataset(object):
 
                 # a patient case (:= slide) the tumor annotation mask is
                 # usually (much) smaller than the normal tissue mask, thus a
-                # different number of batches is needed to exract all the
+                # different number of batches is needed to extract all the
                 # tumor and normal patches. So we compute then normal tissue
                 # mask once. Apart from that, there's no relation between
                 # tumor and normal patches, hence we batch-loop two times: a
                 # first time for the tumor case and a second time for the
-                # normal case.
-
+                # normal case. N.B. In 'random' sampling mode, just one batch
+                # is ever done.
 
                 index = 0 # ignored in 'random' mode -- only one batch done
                 tum_patch_point = []
                 bcnt_t, bcnt_n = 0, 0
                 last_idx_t = last_idx_n = -1
 
-                # *** [BUG] *** split loops doesn't work if we want to show
-                # *** images: dependency on "normal_patches_locations" :-(
-
-                # tumors
-                while(True):
-                    # TO-DO: a batch of two sampling run (tumor + normal)
-                    # should be better encapsulated...
-                    self.logger.info("patient {}: >>> [tumor] starting batch {}".format(patient, bcnt_t))
-
-                    opts['start_idx'] = last_idx_t + 1
-                    tum_patch_list, tum_patch_point, last_idx_t = patch_sampling(
-                        slide, annotations_mask, **opts
-                    )
-                    if tum_patch_list and tum_patch_point:
-                        tum_patch_array = np.asarray(tum_patch_list)
-                        tum_locations = np.array(tum_patch_point)
-                        self.store(info, tum_patch_array, tum_locations, 'tumor', bcnt_t)
-                    else:
-                        self.logger.info(
-                            'patient {}: batch {}: no (more) tumor patches'.format(
-                                patient, bcnt_t
-                            )
-                        )
-                        break
-
-                    # plotting the tumor locations in the XML file Drawing the
-                    # normal patches sampling points tumor_locations.png shows the
-                    # tumor patches locations in red and the normal patches
-                    # locations in green
-                    tumor_locations_im = rgb_im
-                    plt.figure()
-                    plt.imshow(tumor_locations_im)
-                    for p_x, p_y in normal_patches_locations:
-                        plt.scatter(p_y, p_x, c='g')
-                    for p_x, p_y in tum_locations:
-                        plt.scatter(p_y, p_x, c='r')
-
-                    img_file = self.get_image_fname(pat_res_dir, 'tumor_locations', info, bcnt_t)
-                    plt.savefig(img_file)
-                    plt.close()
+                if settings['window']:
                     self.logger.info(
-                        'patient {}: batch {}: tumor locations image saved to: {}'.format(
-                            patient, bcnt_t, img_file
+                        "patient {}: restricting nonzero points range to {}%, {}%".format(
+                            patient, settings['window'][0], settings['window'][1]
                         )
                     )
+                nzx_n, nzy_n = integral.nonzero_range(normal_im, settings['window'])
 
-                    self.tum_counter += len(tum_patch_array)
-
-                    self.logger.info("patient {}: <<< [tumor] done batch {}".format(patient, bcnt_t))
-
-                    if last_idx_t == None:
-                        # in 'random' method, this tells us that we're done sampling
-                        break
-
-                    bcnt_t +=1
-
+                # *** Warning! *** Split loops doesn't work if we want to show
+                # images: there's data dependency on "normal_patches_locations".
 
                 # normal tissue
                 while(True):
                     self.logger.info("patient {}: >>> [normal] starting batch {}".format(patient, bcnt_n))
 
                     opts['start_idx'] = last_idx_n + 1
-                    nor_patch_list , nor_patch_point, last_idx_n = patch_sampling(
-                        slide, normal_im, **opts
+                    nor_patch_list , nor_patch_point, last_idx_n = integral.patch_sampling(
+                        slide, normal_im, nzx_n, nzy_n,  **opts
                     )
                     if nor_patch_point and nor_patch_list:
                         nor_patch_array = np.asarray(nor_patch_list)
                         normal_patches_locations = np.array(nor_patch_point)
-                        self.store(info, nor_patch_array, nor_patch_point, 'normal', bcnt_n)
+                        self.store_patient(info, nor_patch_array, nor_patch_point, 'normal', h5db, bcnt_n)
                     else:
                         self.logger.info(
                             'patient {}: batch {}: no (more) normal patches'.format(
@@ -579,7 +579,6 @@ class Dataset(object):
                             )
                         )
                         break
-
 
 
                     self.nor_counter += len(nor_patch_array)
@@ -590,7 +589,83 @@ class Dataset(object):
                         # in 'random' method, this tells us that we're done sampling
                         break
 
-                    bcnt_n +=1
+                    bcnt_n += 1
+                # {end-while}
+
+                # TO-DO: batch runs should be better encapsulated (aux fun/method)...
+
+                # tumors masks are usually too small for windowed sampling, so
+                # take the full range
+                nzx_t, nzy_t = integral.nonzero_range(annotations_mask, [])
+                while(True):
+
+                    self.logger.info("patient {}: >>> [tumor] starting batch {}".format(patient, bcnt_t))
+
+                    opts['start_idx'] = last_idx_t + 1
+                    tum_patch_list, tum_patch_point, last_idx_t = integral.patch_sampling(
+                        slide, annotations_mask, nzx_t, nzy_t, **opts
+                    )
+                    if tum_patch_list and tum_patch_point:
+                        tum_patch_array = np.asarray(tum_patch_list)
+                        tum_locations = np.array(tum_patch_point)
+                        self.store_patient(info, tum_patch_array, tum_locations, 'tumor', h5db, bcnt_t)
+                    else:
+                        self.logger.info(
+                            'patient {}: batch {}: no (more) tumor patches'.format(
+                                patient, bcnt_t
+                            )
+                        )
+                        break
+
+
+                    if opts['method'] == 'random':
+                        if bcnt_n != bcnt_t:
+                            self.logger.error("[BUG] Can't make scatter image(s): batch count mismatch")
+                            errors += 1
+                        else:
+                            # plotting the tumor locations in the XML file Drawing the
+                            # normal patches sampling points tumor_locations.png shows the
+                            # tumor patches locations in red and the normal patches
+                            # locations in green
+                            tumor_locations_im = rgb_im
+                            plt.figure()
+                            plt.imshow(tumor_locations_im)
+                            # Warning! Data dependency on previous normal batch run
+                            for p_x, p_y in normal_patches_locations:
+                                plt.scatter(p_y, p_x, c='g')
+                            for p_x, p_y in tum_locations:
+                                plt.scatter(p_y, p_x, c='r')
+
+                            img_file = self.get_image_fname(pat_res_dir, 'tumor_locations', info, bcnt_t)
+                            plt.savefig(img_file)
+                            plt.close()
+                            self.logger.info(
+                                'patient {}: batch {}: tumor locations image saved to: {}'.format(
+                                    patient, bcnt_t, img_file
+                                )
+                            )
+
+                    self.tum_counter += len(tum_patch_array)
+
+                    self.logger.info("patient {}: <<< [tumor] done batch {}".format(patient, bcnt_t))
+
+                    if last_idx_t == None:
+                        # in 'random' method, this tells us that we're done sampling
+                        break
+
+                    bcnt_t += 1
+                # {end-while}
+
+                h5db.close()
+                self.logger.info("patient {}: processed in {} (normal) + {} (tumor) batches".format(
+                    patient, bcnt_n, bcnt_t)
+                )
+                self.logger.info("patient {}: data saved to H5 DB: {}".format(patient, h5db_path))
+            # {end-for-patient}
+        # {end-for-centre}
+
+        self.report['errors'] = errors
+        self.report['warnings'] = warnings
 
 
     def __init__(
@@ -600,7 +675,7 @@ class Dataset(object):
             slide_source_fld='',
             xml_source_fld='',
             results_dir='',
-            h5db_path='',
+            # h5db_path='',
             files_counter=0,
             tum_counter=0,
             nor_counter=0,
@@ -613,7 +688,7 @@ class Dataset(object):
         self.slide_source_fld = slide_source_fld
         self.xml_source_fld = xml_source_fld
         self.results_dir = results_dir
-        self._h5db_path=h5db_path,
+        # self._h5db_path=h5db_path,
         self.files_counter = files_counter
         self.tum_counter = tum_counter
         self.nor_counter = nor_counter
@@ -621,7 +696,7 @@ class Dataset(object):
         self.config = config
         self.logger = logger
 
-        self._h5db = hd.File(h5db_path, 'w')
+        # self._h5db = hd.File(h5db_path, 'w')
 
         # prepare a bioler-plate representation
         centre_paths = map(
@@ -640,8 +715,11 @@ class Dataset(object):
         for patient in self.patients:
             if not re.match(config['camelyon17']['patient_name_regex'], patient):
                 errs += 1
-                logger.error('{}: invalid input patient: does not match regex "{}"'.
-                             format(patient, config['camelyon17']['patient_name_regex']))
+                logger.error(
+                    '{}: invalid input patient: does not match regex "{}"'.format(
+                        patient, config['camelyon17']['patient_name_regex']
+                    )
+                )
             else:
                 valid_patients += [patient]
 
@@ -719,9 +797,11 @@ class Dataset(object):
                 )
 
         logger.debug('dataset: \n%s' % pp.pformat(self.dataset))
+        integral.mod_init(mlogger=logger)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._h5db.close()
+        # self._h5db.close()
+        pass
