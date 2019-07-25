@@ -110,7 +110,7 @@ Full description is available in `doc/config.template.ini`.
 * **load** a pre-existing patch database from storage;
 * **train** the neural network model. Performed on GPGPU, wehere available.
 
-#### High resolution patch extraction ###
+#### High resolution patch extraction
 
 The command
 
@@ -143,7 +143,7 @@ under in section `[settings]`, which can be overridden by command line argument
 
     cnn -c my_config.ini --results-sdir=path/to/my/results extract
 
-then `path/to/my/results` would contain something like:
+then `path/to/my/results` would contain something like (**[rewrite this please]**):
 
     my_config.ini
     INFO.log
@@ -168,6 +168,11 @@ explicitly process only a patient subset, append a `-p` or `--patients`
 Note that each patient string `patient_P_node_N` has no XML/TIF extension.
 
 Full examples of usage are in [Section Slurm Scripts](#slurm).
+
+
+#### Random vs linear sampling
+
+**[Please complete]***
 
 
 ### Network training ###
@@ -223,7 +228,7 @@ N]. Note also that results are stored in different directories.
     #SBATCH --ntasks-per-node=1
     #SBATCH --array=0-9
 
-    task_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
+    task_id=$SLURM_ARRAY_TASK_ID
 
     cnn --config-file=... \
         --results-dir=.../${task_id} \
@@ -248,11 +253,12 @@ Note also that results are stored in different directories.
 
     #SBATCH --nodes=1
     #SBATCH --ntasks-per-node=1
-    #SBATCH --array=0-<NUMBER_OF_XML_FILES>
+    #SBATCH --array=0-<NUMBER_OF_SLIDES>
 
-    task_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
+    task_id=$SLURM_ARRAY_TASK_ID
 
     declare -a patients
+    # should have <NUMBER_OF_SLIDES> items
     patients=($(ls --color=none some-dir/with-xml-annotations/ | sed -nr 's/\.xml// p'))
     patient=${patients[${SLURM_ARRAY_TASK_ID}]}
 
@@ -261,7 +267,7 @@ Note also that results are stored in different directories.
         --patients=${patient}\
         extract
 
-**N.B.** The the parameter `<NUMBER_OF_XML_FILES>` should be set to the total
+**N.B.** The the parameter `<NUMBER_OF_SLIDES>` should be set to the total
 number of "patients". Since the `patients` array is built by listing the
 content of a directory with Camelyon17-style XML annotation files, their total
 number should be known in advance. Failing to do so will result in either
@@ -275,3 +281,91 @@ Please, review the full script, then call it like this:
 
 Under the hypothesis of infinite resources (i.e., available CPUs), this script
 achieves linear speed-up. No GPGPU is involved.
+
+
+### <a name="#slurm_onep-mrnd"></a>Parallel slide processing with several random generator seeds
+
+As a combination of the two previous techniques, the file
+`bin/runner-slurm_onep-mrnd` uses a Slurm job array where each task is
+assigned a different WSI (a single "patient case") while the random generator seed is
+varied over M parallel subtasks. Here's the relevant parts of the bash script
+(slightly simplified).  Note also that results are stored in different
+directories.
+
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --cpus-per-task=<NUMBER_OF_SEEDS>
+    #SBATCH --array=0-<NUMBER_OF_SLIDES>
+
+    declare -a patients
+    # should have <NUMBER_OF_SLIDES> items
+    patients=($(ls --color=none some-dir/with-xml-annotations/ | sed -nr 's/\.xml// p'))
+    patient=${patients[${SLURM_ARRAY_TASK_ID}]}
+
+    for s in $(seq 0 <NUMBER_OF_SEEDS>); do
+        srun cnn --config-file=... \
+            --results-dir=.../${SLURM_ARRAY_TASK_ID}.$s \
+            --seed=${s}
+            --patients=${patient}\
+            extract
+    done
+
+
+
+**N.B.** The same caveat as above for `<NUMBER_OF_SLIDES>` applies.
+Please, review the full script, then call it like this:
+
+    some-hpc$ sbatch runner-slurm_onep-mrnd
+
+Under the hypothesis of infinite resources (i.e., available CPUs), this script
+achieves linear speed-up of `<NUMBER_OF_SLIDES> x <NUMBER_OF_SEEDS>`. No
+GPGPU is involved.
+
+
+### <a name="#slurm_onep-mrnd"></a>Parallel slide processing with several linear sampling windows
+
+All the above techniques allow only for a fixed number `config[settings] :
+n_samples` of samples. To analyze the whole slide, the batch-based linear
+sampling method is applied by the script `bin/runner-slurm_onep-wind` which
+uses a Slurm job array where each task is assigned a different WSI (a single
+"patient case") while a window (range) of mask indices is varied over M
+parallel subtasks. Here's the relevant parts of the bash script (slightly
+simplified).  Note also that results are stored in different directories.
+
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --cpus-per-task=<NUMBER_OF_WINDOWS>
+    #SBATCH --array=0-<NUMBER_OF_SLIDES>
+
+    declare -a patients
+    # should have <NUMBER_OF_SLIDES> items
+    patients=($(ls --color=none some-dir/with-xml-annotations/ | sed -nr 's/\.xml// p'))
+    patient=${patients[${SLURM_ARRAY_TASK_ID}]}
+
+    win_step=10
+    win_start=0
+    win_end=10
+    # should loop no more than <NUMBER_OF_WINDOWS> times, 10 in this case
+    while [[ $win_end -le 100 ]]; do
+        srun cnn --config-file=... \
+            --results-dir=.../${SLURM_ARRAY_TASK_ID}.${win_start}-${win_end} \
+            --seed=0
+            --patients=${patient} \
+            --method=linear \
+            --window ${win_start} ${win_end} \
+            extract
+
+        win_sta=$win_end
+        win_end=$((win_end + win_step))
+    done
+
+
+**N.B.** The same caveat as above for `<NUMBER_OF_SLIDES>` and
+`<NUMBER_OF_WINDOWS>` applies.  Please, review the full script, then call it
+like this:
+
+    some-hpc$ sbatch runner-slurm_onep-wind
+
+Under the hypothesis of infinite resources (i.e., available CPUs), this script
+achieves linear speed-up of `<NUMBER_OF_SLIDES> x <NUMBER_OF_WINDOWS>`. No
+GPGPU is involved.

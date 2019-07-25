@@ -1,8 +1,8 @@
 #!/bin/bash -l
 # -*- mode: shell-script -*-
 ################################################################################
-# runner-onep-mrnd: cnn runner for SLURM with one patient/process (or
-# patient/CPU) plus random seed sweep per patient.
+# runner-onep-wind: cnn runner for SLURM with one patient/process (or
+# patient/CPU) plus mask window sweep (linear sampling) per patient.
 #
 # Use a job array where each task is scheduled automatically on a (possibly)
 # different node/CPU. Subtask are launched in parallel over several CPU cores
@@ -12,15 +12,15 @@
 # This file is part of PROCESS_UC1.
 ################################################################################
 # Slurm batch control
-#SBATCH --job-name=cnn-extr_onep-mrnd
+#SBATCH --job-name=cnn-extr_onep-wind
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=10          # must equal the random seed range stop + 1
+#SBATCH --cpus-per-task=10          # must equal the number of sampling windows
 #SBATCH --mem-per-cpu=5GB
 #SBATCH --time=01:00:00
 #SBATCH --account=process2
 #SBATCH --partition=plgrid-testing
-#SBATCH --array=0-4                 # must equal the number of patient cases / slides
+#SBATCH --array=0-5                 # must equal the number of patient cases / slides
 #SBATCH --error=%x-%A_%3a.err
 #SBATCH --output=%x-%A_%3a.out
 #SBATCH --mail-type=END,FAIL
@@ -60,7 +60,7 @@ Directory names:
 
 where
 
-  <subtask-id> := random seed
+  <subtask-id> := <sampling win start>-<sampling win end>
 EOF
 
 run_id=$(printf '%03d' $SLURM_ARRAY_TASK_ID)
@@ -97,8 +97,7 @@ PROCESS_UC1__HAS_TENSORFLOW=
 
 export PYTHONPATH PROCESS_UC1__HAS_SKIMAGE_VIEW PROCESS_UC1__HAS_TENSORFLOW
 
-# The size should correspond to that of the slurm's job array. A bit fragile
-# as we don't know how may files are there... Be careful!
+# The size should correspond to that of the slurm's job array.
 declare -a patients
 patients=($(ls --color=none ${DATA_DIR}/lesion_annotations/ | sed -nr 's/\.xml// p'))
 
@@ -114,19 +113,27 @@ patient=${patients[${SLURM_ARRAY_TASK_ID}]}
 }
 
 # no container support for now, take stuff under ~/myroot/bin + Git clone
-# dir. Executable is on $PATH, no need to peek in the ${EXPERIMENT_ROOT} dir
-# Make sure that the set upper bound *equals* `$(--cpus-per-task)-1`
-for s in $(seq 0 9); do
-    stask_id=$(printf '%02d' $s)
+# dir. Executable is on $PATH, no need to peek in the ${EXPERIMENT_ROOT} dir. A
+# sampling window is defined by two cursors $win_start, $win_end (percent of
+# the total nonzero mask index range). Make sure you don't generate more
+# windows than `$(--cpus-per-task)`!
+win_step=10
+win_start=0
+win_end=10
+while [[ $win_end -le 100 ]]; do
+    stask_id=$(printf '%03d-%03d' $win_start $win_end)
     results_dir=${RESULTS_DIR}/${TSTAMP}.${srun_id}.${stask_id}
 
-    cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-dir=${results_dir} --log-level=debug --patients=${patient} --seed=${s} extract"
+    # no ramdom sampling, seed shouldn't be uset at all but, you never know
+    cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-dir=${results_dir} --log-level=debug --patients=${patient} --seed=0 --method=linear --window ${win_start} ${win_end} extract"
 
     echo -e "[INFO] ${myself}: command line:\n    ${cmnd}"
     srun $cmnd || {
         echo 2>&1 "[ERROR] ${myself}: ${win_start}-${win_end}: subtask failed"
         ((errs++))
     }
+    win_start=$win_end
+    win_end=$((win_end + win_step))
 done
 
 
