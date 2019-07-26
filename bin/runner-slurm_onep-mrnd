@@ -31,7 +31,7 @@
 #   $SCRATCH   == $PLG_USER_SCRATCH  == $PLG_USER_SCRATCH_SHARED
 #                 $PLG_GROUPS_STORAGE == $PLG_GROUPS_SHARED
 #
-# Excpected experiment sandbox structure:
+# Expected experiment sandbox structure:
 #
 # <experiment_root>/
 #     code/           symlink to the program's code
@@ -130,9 +130,4 @@ for s in $(seq 0 9); do
 done
 
 
-################################################################################
-# stats
-################################################################################
-sacct -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,CPUTimeRAW,Elapsed,ConsumedEnergy
-
-[[ $errs -gt 0 ]] && exit $errs
+exit $errs

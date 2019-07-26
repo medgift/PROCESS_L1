@@ -20,7 +20,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --account=process2
 #SBATCH --partition=plgrid-testing
-#SBATCH --array=0-5                 # must equal the number of patient cases / slides
+#SBATCH --array=0-4                 # must equal the number of patient cases / slides
 #SBATCH --error=%x-%A_%3a.err
 #SBATCH --output=%x-%A_%3a.out
 #SBATCH --mail-type=END,FAIL
@@ -31,7 +31,7 @@
 #   $SCRATCH   == $PLG_USER_SCRATCH  == $PLG_USER_SCRATCH_SHARED
 #                 $PLG_GROUPS_STORAGE == $PLG_GROUPS_SHARED
 #
-# Excpected experiment sandbox structure:
+# Expected experiment sandbox structure:
 #
 # <experiment_root>/
 #     code/           symlink to the program's code
@@ -136,10 +136,4 @@ while [[ $win_end -le 100 ]]; do
     win_end=$((win_end + win_step))
 done
 
-
-################################################################################
-# stats
-################################################################################
-sacct -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,CPUTimeRAW,Elapsed,ConsumedEnergy
-
-[[ $errs -gt 0 ]] && exit $errs
+exit $errs

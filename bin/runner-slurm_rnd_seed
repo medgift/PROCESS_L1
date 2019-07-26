@@ -31,7 +31,7 @@
 #   $SCRATCH   == $PLG_USER_SCRATCH  == $PLG_USER_SCRATCH_SHARED
 #                 $PLG_GROUPS_STORAGE == $PLG_GROUPS_SHARED
 #
-# Excpected experiment sandbox structure:
+# Expected experiment sandbox structure:
 #
 # <experiment_root>/
 #     code/           symlink to the program's code
@@ -96,8 +96,3 @@ cmnd="cnn --config-file=${CONF_DIR}/config.${SLURM_JOB_NAME}.ini --results-dir=$
 
 echo -e "[INFO] ${myself}: command line:\n    ${cmnd}"
 eval $cmnd
-
-################################################################################
-# stats
-################################################################################
-sacct -j ${SLURM_ARRAY_JOB_ID}.batch --format=JobID,AveVMSize,MaxVMSize,AveCPU,CPUTimeRAW,Elapsed,ConsumedEnergy
