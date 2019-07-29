@@ -22,17 +22,23 @@ collection of raw Whole Slide Images (WSIs), each corresponding to a *patient
 case* from a given *centre*:
 
     centre_C
-        patient_P_node_N.{tif,xml}
+        patient_P_node_N.tif
         ...
+    centre_...
+        ...
+    lesion_annotations
+        patient_P_node_N.xml
+        ...
+
 
 # Installation
 
-No packaging support for now. Please **FIX ME**.
+No packaging support for now.
 
 ## Dependencies
 
 The code is written in Python 2.7 and requires Keras 2.1.5 with Tensorflow
-1.4.0 as backend. Further dependencies are in `Requirements.txt`.
+1.4.0 as backend. Further dependencies are in `requirements.txt`.
 
 ## Configuration
 
@@ -41,15 +47,15 @@ Configuration files are ini-based. A full template is in
 `etc/`. Please, adjust your configuration and use it by calling one of the
 master scripts with option `--config-file` whose default value is `config.ini`
 (which doesn't exist). Alternatively, a configuration file can be set via the
-env variable `PROCESS-UC1__CONFIG_FILE`. F.i. on a *nix-like system, run
+env variable `PROCESS_UC1__CONFIG_FILE`. F.i. on a *nix-like system, run
 
-    $ PROCESS-UC1__CONFIG_FILE=<path-to-your-config-file> <master-script>
+    $ PROCESS_UC1__CONFIG_FILE=<path-to-your-config-file> <master-script>
 
-See below, fo configuration details.
+See below for configuration details.
 
 ## Usage
 
-The only working _master script_ is `bin/cnn`. Get the full help by calling:
+For now, the only working _master script_ is `bin/cnn`. Get the full help by calling:
 
     $ ./bin/cnn --help
 
@@ -125,33 +131,36 @@ tissue coverage is computed as the integral over the selected region and
 patches with less than 80% of informative content are rejected. Mostly white
 and black patches are rejected as well.
 
-Patches are hierarchically stored in a h5 file with the following tree
+Patches are hierarchically stored in `h5` DB files with the following tree
 structure (blank spaces added for readability sake):
 
-    tumor  / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch n.>]
-    tumor  / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch n.>]
-    normal / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch n.>]
-    normal / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch n.>]
+    tumor  / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch>]
+    tumor  / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch>]
+    normal / l<level> / c<centre> / p<patient> / n<node> / patches   [/ <batch>]
+    normal / l<level> / c<centre> / p<patient> / n<node> / locations [/ <batch>]
     ...
 
-Where the extra key component "[/ batch n.]" is added when there are more
+Where the extra key component `[/ <batch> ]` is added when there are more
 patches to extract than `config[settings] : n_samples`.
 
 Results are stored in the directory specified by config file option `results_dir` defined
 under in section `[settings]`, which can be overridden by command line argument
-`--results-sdir`, f.i.:
+`--results-dir`, f.i.:
 
-    cnn -c my_config.ini --results-sdir=path/to/my/results extract
+    cnn -c my_config.ini --results-dir=path/to/my/results extract
 
-then `path/to/my/results` would contain something like (**[rewrite this please]**):
+then `path/to/my/results` would contain subdirectories for each patient case;
+something like:
 
-    my_config.ini
-    INFO.log
-    levelL_centreC_patientP_nodeN_annotation_mask.png
-    levelL_centreC_patientP_nodeN_normal_tissue_mask.png
-    levelL_centreC_patientP_nodeN_tumor_locations.png
-    ...
-    patches.hdf5
+    ├── my_config.ini
+    ├── INFO.log
+    └── l<level>_c<centre>_p<patient>_n<node>
+        ├── annotation_mask.png
+        ├── normal_tissue_mask.png
+        ├── patches.h5
+        └── tumor_locations.<batch>.png
+    └── l..._c..._p..._n...
+        ...
 
 where `my_config.ini` is a copy of the input configuration file, `INFO.log` is
 the execution log, then images of extracted patches (binary masks of tumor and
@@ -170,14 +179,70 @@ Note that each patient string `patient_P_node_N` has no XML/TIF extension.
 Full examples of usage are in [Section Slurm Scripts](#slurm).
 
 
-#### Random vs linear sampling
+#### Sampling methods
 
-**[Please complete]***
+Patch extraction is based on sampling of WSI points in the interesting locations
+defined by lesion annotation information.  Two methods can be used: random or linear.
+
+
+##### Random sampling
+
+This (default) is set by CL option `--method=random`. The maximum number of
+samples is specified by `config[settings] : n_samples`. Since the sampling is
+governed by a pseudo-random number generator, a "seed" can be set via CL
+option `--seed=<int>`. By default where, `<int>`, is set to some (possibly
+changing) value chosen by the operating system. Thus, in order to repeat the
+same experiment, be sure to always specify the same seed through different
+runs! On the other hand, by using different seeds, one can extract different
+patch sets (of size `n_samples`), provided that the WSI has enough annotation
+points -- otherwise, duplicated patches may come out.
+
+Also, an adaptive "white" threshold (a pretty sensitive parameter) mechanism
+is available. This is intended for tuning purposes (not recommended for
+production runs) and is governed by the following configuration options:
+
+    [settings]
+    white_threshold = <float>
+    white_threshold_incr = <float>
+    white_threshold_max = <float>
+    bad_batch_size = <int>
+
+To see how the `white_threshold` increases during the run, debugging must be
+enabled via CL option `--log-level=debug` -- the last used value is noted in
+the file `INFO.log`. The mechanism can be disabled by setting
+`white_threshold_incr = 0.`.
+
+For more details, see
+
+    pydoc lib/python2.7/defaults.py
+
+
+##### Linear sampling
+
+This method is set by CL option `--method=linear` and allows processing
+**all** the WSI's annotation points. Since there can be millions of these
+(especially for the normal tissues), sampling is done in batches of size
+`config[settings] : n_samples`; each batch has its output stored under a
+different key in the patient case's `patches.h5`. Of course, `n_samples` must
+be adjusted to allow a batch to fit in RAM. As a rule of thumb, a size of 1000
+should consume 7-8GB of RAM (included the loaded slide). The size of the
+resulting `patches.h5` depends on how many batches are needed to scan the
+whole slide: it can grow up to ~30GB. A portion of the whole annotation set
+can be processed by setting the CL option `--window <MIN%> <MAX%>`, whose
+bounds define, respectively, the minimum and maximum percent indices (think of
+two "cursors") in the annotation set. Thus:
+
+    cnn --method=linear --window 0 10 ...
+
+instructs the program to process only the first 10% of annotations.
+
+The adaptive white threshold mechanism is not available with linear sampling.
 
 
 ### Network training ###
 
-**Warning. This section needs reviewing.**
+**Warning! This section needs reviewing. Network training is under
+development.**
 
 Before training the NN model, an h5 patch DB must be available, either by
 extracting patches from a datest with command
@@ -189,12 +254,12 @@ or by loading a pre-computed h5 DB file with command
     cnn [OPTIONS] -c my_config.ini load train
 
 In both cases the input to the `train` step is specified in the `[load]`
-section of `my_config.ini` -- **PLEASE REVIEW**. Whereas output is composed of
+section of `my_config.ini` -- Whereas output is composed of
 
 * the model new weights stored in file `tumor_classifier.h5`,
 * the training curves as png images,
 
-all stored under directory `<results_dir>/` (**PLEASE VERIFY**).
+all stored under directory `<results_dir>/`
 
 Training is performed on GPGPU, by default the first one in the array (index
 '0'). This can be either specified in `my_config.ini`
@@ -218,11 +283,11 @@ speed-up (minus system overhead).
 ### <a name="#slurm_rnd_seed"></a>Parallel patch extraction by randomized seed
 
 The file `bin/runner-slurm_rnd_seed` uses a Slurm job array where each task is
-configured with a different random seed. The goal is to exploit randomness in
-the WSI point distribution in order to extract a different patch set at each
-batch run. Here's the relevant parts of the bash script (slightly simplified),
-where the random seed is set by the batch scheduler task ID in an array of [0,
-N]. Note also that results are stored in different directories.
+configured with a different random generator seed. The goal is to exploit
+randomness in the WSI point distribution in order to extract a different patch
+set at each batch run. Here's the relevant parts of the bash script (slightly
+simplified), where the random seed is set by the batch scheduler task ID in an
+array of [0, N]. Note also that results are stored in different directories.
 
     #SBATCH --nodes=1
     #SBATCH --ntasks-per-node=1

@@ -1,3 +1,26 @@
+# -*- coding: utf-8 -*-
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+"""Auxiliary functions
+
+To-Do
+====
+
+* review all otsu stuff -- consider moving away (to integral.py?)
+
+* make something more practical of 'verbose' -- not handled by config, should
+  come from the logging level
+
+Meta
+====
+
+:Authors:
+    Mara Graziani et al.
+    Marco E. Poleggi L<mailto:marco-emilio.poleggi -AT- hesge.ch>
+"""
 from defaults import HAS_SKIMAGE_VIEW, HAS_TENSORFLOW, valid_pipelines
 import ConfigParser, io, sys, re
 import pprint as pp
@@ -20,31 +43,6 @@ debug = False
 conf_debug = False
 logger = None
 ################################################################################
-
-'''To-DO
-* remove all parse...() functions obsoleted by `parseConfig`
-'''
-
-'''** NOT IMPLEMENTED YET** Do not use
-'''
-def parseOptionsFromLog(folder, logfile):
-    raise RuntimeError, 'Not implemeted yet'
-
-    settings = {}
-    settings = parseOptions('config.cfg')
-    return settings
-
-def getInfoFromXml(xml_path, centre):
-    info = {}
-    info['centre'] = centre
-    info['patient'] = xml_path.split('patient_')[1].split('_node_')[0]
-    info['node'] = xml_path.split('patient_')[1].split('_node_')[1].strip('.xml')
-    return info
-
-def createH5Dataset(dataset_file_path):
-    # [BUG] there's no dataset created here, so pretty useless
-    return hd.File(dataset_file_path, "w")
-
 
 def get_data_val(data_class, centres, db, db16, dblist, rand_patient):
     pat_idx = []
@@ -155,52 +153,6 @@ def shuffle_data(x, y):
     )
     return x_shuffled, y_shuffled
 
-def setDBHierarchy(h5db, settings, info):
-    '''Hierarchy is a tree:
-
-            Tumor / Level N / Centre C / Patient P / Node No/  patches
-            Tumor / Level N / Centre C / Patient P / Node No/ locations
-
-            Normal / Level N / Centre C / Patient P / Node No/ patches
-            Normal / Level N / Centre C / Patient P / Node No/ locations
-    '''
-
-    if 'tumor' not in h5db:
-        h5db.create_group('tumor')
-    if 'normal' not in h5db:
-        h5db.create_group('normal')
-
-    if 'level{}'.format(settings['slide_level']) not in h5db.get('tumor'):
-        h5db.get('tumor').create_group('level{}'.format(settings['slide_level']))
-        wlog('DB Adding Level Group to Tumoral patches', 'level{}'.format(settings['slide_level']))
-    if 'level{}'.format(settings['slide_level']) not in h5db.get('normal'):
-        h5db.get('normal').create_group('level{}'.format(settings['slide_level']))
-        wlog('DB Adding Level Group to Normal patches', 'level{}'.format(settings['slide_level']))
-
-    if 'centre{}'.format(info['centre']) not in h5db.get('tumor/level{}'.format(settings['slide_level'])) :
-        h5db.get('tumor/level{}'.format(settings['slide_level'])).create_group('centre{}'.format(info['centre']))
-        wlog('DB Adding Centre Group to Tumoral Patches of Level {}'.format(settings['slide_level']), 'centre{}'.format(info['centre']))
-    if 'centre{}'.format(info['centre']) not in h5db.get('normal/level{}'.format(settings['slide_level'])):
-        h5db.get('normal/level{}'.format(settings['slide_level'])).create_group('centre{}'.format(info['centre']))
-        wlog('DB Adding Centre Group to Normal Patches of Level {}'.format(settings['slide_level']), 'centre{}'.format(info['centre']))
-
-    if 'patient{}'.format(info['patient']) not in h5db.get('tumor/level{}/centre{}'.format(settings['slide_level'], info['centre'])):
-        h5db.get('tumor/level{}/centre{}'.format(settings['slide_level'], info['centre'])).create_group('patient{}'.format(info['patient']))
-        wlog('DB Adding Patient Group to Tumor Patches', 'patient{}'.format(info['patient']))
-    if 'patient{}'.format(info['patient']) not in h5db.get('normal/level{}/centre{}'.format(settings['slide_level'], info['centre'])):
-        h5db.get('normal/level{}/centre{}'.format(settings['slide_level'], info['centre'])).create_group('patient{}'.format(info['patient']))
-        wlog('DB Adding Patient Group to Normal Patches', 'patient{}'.format(info['patient']))
-
-    if 'node{}'.format(info['node']) not in h5db.get('tumor/level{}/centre{}/patient{}'.format(settings['slide_level'], info['centre'], info['patient'])):
-        h5db.get('tumor/level{}/centre{}/patient{}'.format(settings['slide_level'], info['centre'], info['patient'])).create_group('node{}'.format(info['node']))
-        wlog('DB Adding Node Group to Tumor Patches for Patient {}'.format(info['patient']), 'node{}'.format(info['node']))
-
-    if 'node{}'.format(info['node']) not in h5db.get('normal/level{}/centre{}/patient{}'.format(settings['slide_level'], info['centre'], info['patient'])):
-        h5db.get('normal/level{}/centre{}/patient{}'.format(settings['slide_level'], info['centre'], info['patient'])).create_group('node{}'.format(info['node']))
-        wlog('DB Adding Node Group to Normal Patches for Patient {}'.format(info['patient']), 'node{}'.format(info['node']))
-    return
-
-
 
 def log_init(
         log_fname='info.log',
@@ -262,21 +214,23 @@ def log_init(
 def wlog(subj, msg):
     ''' wlog: saves the information in info into a log file
     '''
+
+    raise RuntimeError, "Obsolete. Please use the logger instead"
     logger.info(subj + ': '+ msg)
 
 
 def load_slide(slide_path, slide_level=6, verbose=0):
-    ''' load_slide:
-        loads the WSI as a Numpy array
+    """
+    loads the WSI as a Numpy array
 
-        input:
-        slide_path, path to the WSI
-        slide_level, level of resolution (default = 6)
+    input:
+    slide_path, path to the WSI
+    slide_level, level of resolution (default = 6)
 
-        output:
-        rgb_img, [Numpy array] loaded image
-        slide, [OpenSlide object] slide
-    '''
+    output:
+    rgb_img, [Numpy array] loaded image
+    slide, [OpenSlide object] slide
+    """
     slide = OpenSlide(slide_path)
     rgba_im = slide.read_region((0,0),slide_level,slide.level_dimensions[slide_level])
     rgba_im= np.array(rgba_im)
@@ -300,7 +254,6 @@ def gray2otsu(gray_im, verbose=1):
 def otsu2morph(otsu_im, verbose = 0):
     '''Morphology '''
     kernel_o = np.ones((5,5),np.uint8)
-    #kernel_c = np.ones((1,1),np.uint8)
     morp_im = cv2.morphologyEx(otsu_im,cv2.MORPH_OPEN,kernel_o)
     morp_im = morp_im == 0
     morp_im = (morp_im).astype(float)
@@ -316,7 +269,7 @@ def get_otsu_im(rgb_im, verbose = 0):
     return gray2otsu(rgb2gray(rgb_im))
 
 def preprocess(
-        slide_path,  xml_path,
+        slide_path, xml_path,
         slide_level=7,
         patch_size=224,
         verbose=1
@@ -328,13 +281,21 @@ def preprocess(
     the tumor contours
 
 
-    input:
-    slide_path, path to WSI
-    slide_level, level of resolution (default = 6)
+    :param str slide_path: path to the WSI file
 
-    output:
-    mask, [Numpy array of 0 and 1s] tumor annotation mask
-    rgb_img, [Numpy array] loaded image
+    :param int slide_level: resolution level
+
+    :param int patch_size: patch size in pixels
+
+    :return list:
+
+        obj slide: an OpenSlide image object
+
+        obj mask: a tumor annotation mask as binary [0, 1] Numpy array
+
+        obj rgb_img: the loaded slide image as a Numpy array
+
+        obj tum_img: the tumor image as a Numpy array (??? looks == rgb_img ???)
     """
     rgb_im, slide = load_slide(slide_path, slide_level=slide_level)
 
@@ -349,54 +310,25 @@ def preprocess(
 
     return slide, mask, rgb_im, tum_im
 
-def check_data(centre, source_fld, xml_path):
-    pwd = source_fld + str(centre) + '/'
-    WSI_file = xml_path[:-3]+'tif'
 
-    logger.info('Workin with: {}'.format(WSI_file))
-    slide_path = join(pwd,WSI_file)
-    return slide_path, None
-
-def parseOptions(configFile):
-    raise RuntimeError, 'Obsoleted by `parseConfig()`'
-
-    settings = {}
-
-    config = ConfigParser.RawConfigParser(allow_no_value = True)
-    config.read(configFile)
-
-    training_centres = []
-    centres = config.get("settings", "training_centres").split(',')
-    for c in centres:
-        training_centres.append(int(c))
-
-    settings['training_centres'] = training_centres
-    settings['source_fld'] = config.get("settings", "source_fld")
-    settings['xml_source_fld'] = config.get("settings", "xml_source_fld")
-    settings['slide_level'] = int(config.get("settings", "slide_level"))
-    settings['patch_size'] = int(config.get("settings", "patch_size"))
-    settings['n_samples'] = int(config.get("settings", "n_samples"))
-
-    '''Logging the info'''
-    wlog('training_centres', settings['training_centres'])
-    wlog('source_fld', settings['source_fld'])
-    wlog('xml_source_fld', settings['xml_source_fld'])
-    wlog('slide_level', settings['slide_level'])
-    wlog('patch_size', settings['patch_size'])
-    wlog('n_samples', settings['n_samples'])
-
-    return settings
-
-'''Parse an ini-style 'configFile', merge its contents with dict 'defConfig'
-and return a new 'config' dict (same structure as `defaults.def_config`)
-
-This is the only function needed to store program's config once for all.
-'''
 def parseConfig(configFile, defConfig):
+    """
+    Parse an ini-style 'configFile', merge its contents with dict 'defConfig'
+    and return a new 'config' dict.
+
+    This is the only function needed to store program's config once for all.
+
+    :param dict defConfig: template configuration dict with default values
+
+    :param str configFile: path to an INI-style configuration file
+
+    :return dict: with the same structure as :ref:`defaults.def_config`
+    """
     def _typeof(obj):
-        '''Return a list of stringified type(obj) and types of its elements, if any
-        (only lists are supported).
-        '''
+        """
+        Return a list of stringified type(obj) and types of its elements, if
+        any (only lists are supported).
+        """
         fre = lambda v: re.match("<type\s+'(\w+)'>", str(type(v))).group(1)
         types = [fre(obj)]
         if isinstance(obj, list):
@@ -404,10 +336,11 @@ def parseConfig(configFile, defConfig):
         return types
 
     def _typify(stuff, types):
-        '''Type-cast the `stuff` string according to list `types` as returned by
+        """
+        Type-cast the `stuff` string according to list `types` as returned by
         `_typeof()`. types[0] is the container type, followin elements, if
         any, specify the types of comma-splitted `stuff`
-        '''
+        """
         # t is a stringified type, like 'str'
         if conf_debug:
             sys.stderr.write("[debug] stuff={} <=> types={}\n".format(stuff, types))
@@ -433,7 +366,6 @@ def parseConfig(configFile, defConfig):
 
 
     config = {}
-    # parser = ConfigParser.RawConfigParser(defConfig, allow_no_value=True)
     parser = ConfigParser.SafeConfigParser(defConfig)
     try:
         parser.readfp(open(configFile))
@@ -476,6 +408,7 @@ def parseConfig(configFile, defConfig):
 
     return config
 
+
 def parseLoadOptions(configFile):
     raise RuntimeError, 'Obsoleted by `parseConfig()`'
 
@@ -487,7 +420,6 @@ def parseLoadOptions(configFile):
     return settings
 
 def parseTrainingOptions(configFile):
-    # [BUG] should we review and add any missing option??
     raise RuntimeError, 'Obsoleted by `parseConfig()`'
 
     settings = {}
@@ -508,10 +440,10 @@ def parseTrainingOptions(configFile):
 
 
 
-'''
-Validata list:`pipeline`. Allowed values are defined in `defaults::valid_pipelines`
-'''
 def validate_pipeline(pipeline):
+    """"
+    Validate list:`pipeline`. Allowed values are defined in `defaults::valid_pipelines`
+    """
     if not pipeline in valid_pipelines:
         raise ArgumentTypeError("{}: must be in {}".format(pipeline, valid_pipelines))
 

@@ -46,7 +46,6 @@ def extract(
     """
     logger.info('[extract] step starting...')
 
-    from functions import createH5Dataset
     from datasets import Dataset
 
     # no h5db operation here, all done inside Dataset, so instantiate the DB in there

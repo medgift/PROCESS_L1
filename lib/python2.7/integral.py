@@ -1,13 +1,30 @@
+# -*- coding: utf-8 -*-
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+"""Patch sampling routines by image integration.
+
+To-Do:
+=====
+
+* use proper point(x, y) class [over np.arrays?]
+* develop a `sampler` class -- too many kludges down there ^_^
+
+
+Meta
+====
+
+:Authors:
+    Mara Graziani et al.
+    Marco E. Poleggi L<mailto:marco-emilio.poleggi -AT- hesge.ch>
+"""
 import cv2
 import numpy as np
 from PIL import Image
 from skimage.transform.integral import integral_image, integrate
 from random import randint
-"""
-TO-DO:
-* use proper point(x, y) class [over np.arrays?]
-* develop a `sampler` class -- too many kludges down there ^_^
-"""
 logger = None
 
 def mod_init(mlogger=None):
@@ -15,27 +32,6 @@ def mod_init(mlogger=None):
     """
     global logger
     logger = mlogger
-
-def is_white_patch(cur_patch,white_percentage):
-    ''' Basic is_white check: checks if the extracted patch is white
-        and returns True if so
-
-    input:
-    cur_patch, patch to check
-    white_percentage, white portion threshold
-
-    output:
-    True if percentage of white> white portion threshold
-    False otherwise
-    '''
-    #good buttt slowww
-    # half black and half white patches are still kept. not a good thing.
-    is_white = True
-    total_white = float(cur_patch.shape[0] *cur_patch.shape[1] * cur_patch.shape[2] * 255)
-    if (cur_patch.sum()/total_white)>white_percentage:
-        return is_white
-    else:
-        return not is_white
 
 def is_point_on_border(
         point_x, point_y,

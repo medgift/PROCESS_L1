@@ -7,6 +7,93 @@
 #
 # This file is part of PROCESS_UC1.
 ################################################################################
+"""
+cnn -- EnhanceR PROCESS_UC1 launch script
+
+Usage
+=====
+
+    $ cnn [OPTIONS] [STEP1 [STEP2...]]
+
+
+Options
+-------
+
+Legend: <type>(<default value>)
+
+    --documentation, -d
+        <flag>. Print (this) extended program documentation. Warning! The
+        :ref:`README.md` might be more up-to-date
+
+    --config-file, -c CONFIG_FILE
+        <str>(see :ref:`defaults.CONFIG_FILE`). Configuration file
+
+    --gpu-id, -g N
+        <int>(0). GPU ID to use; must be >= 0. Currently *unused*!
+
+    --log-level, -l LEVEL
+        <str>('info'). Logging level (notset, debug, info, warn, error, critical)
+
+    --method, -m METHOD
+        <str>('random'). Sampling method (random, linear)
+
+    --patients, -p PATIENT...
+        <list>([]). A space-separated list of patient cases. It must be a subset
+        of the whole datasets; each item must match the regex
+        `config['camelyon17'] => 'patient_name_regex'`
+
+    --results-dir, -r  RESULTS-DIR
+        <str>('results'). Path to the results dir. Overrides
+        `config[settings][results_dir]`
+
+    --seed, -s S
+        <int>({OS default}). Random seed
+
+    --window, -w MIN% MAX%
+        <int>(). Nonzero point index window in [0, 100]). This will limit the
+        sampling to the %range [MIN, MAX) of all available indices
+
+
+Pipeline
+========
+
+For now only two pipeline steps are allowed and at least one is mandatory. Here is the
+valid step sequences (or pipelines):
+
+    #  pipeline                        step1    step2
+    -------------------------------------------------
+    1   patch extraction               extract
+    2   patch extraction + training    extract  train
+    3   training existing patches      load     train
+
+**Development status** For now only the `extract` step is working in a
+sequential random sampling fashion, i.e., patches are sequentially extracted
+over a uniform distribution of image (WSI) points. The remaining steps are
+implemented but not tested with the latest refactored code.
+
+
+High resolution patch extraction
+--------------------------------
+
+Just run:
+
+    $ cnn [OPTIONS] extract
+
+See :ref:`README.md` for more details.
+
+
+See also
+========
+
+:ref:`defaults.py` for all configuration options.
+
+
+To-Do
+=====
+
+...many things ;-)
+
+"""
 # kludge, waiting for proper packaging...
 import sys, argparse
 sys.path += ['lib/python2.7/', '../lib/python2.7/']
@@ -67,117 +154,7 @@ from pipeline import extract, load, train
 from extract_xml import *
 if HAS_TENSORFLOW:
     from models import *
-###############################################################################
-'''
-cnn -- EnahnceR PROCESS_UC1 launch script
 
-Usage
-=====
-
-High resolution patch extraction
---------------------------------
-
-    $ bin/cnn [OPTIONS] [STEP1 [STEP2...]]
-
-
-Options
--------
-
-Legend: <type>(<default value>)
-
-    --gpu-id, -g N
-        <int>(0). GPU ID to use; must be >= 0. Currently *unused*!
-
-    --patients, -p PATIENT...
-        <list>([]). A space-separated list of patient cases. It must be a subset
-        of the whole datasets; each item must match the regex
-        `config['camelyon17'] => 'patient_name_regex'`
-
-    --method, -m METHOD
-        <str>('random'). Sampling method (random, linear)
-
-    --window MIN MAX
-        <int>(). Nonzero point index window in [0, 100]). This will limit the
-        sampling to the %range [MIN, MAX) of all available indices
-
-    --seed, -s S
-        <int>({OS default}). Random seed
-
-    --log-level, -l LEVEL
-        <str>('info'). Logging level (notset, debug, info, warn, error, critical)
-
-    --results-dir, -r  RESULTS-DIR
-        <str>('results'). Path to the results dir. Overrides
-        `config[settings][results_dir]`.
-
-Pipeline
-========
-
-For now only two pipeline steps are allowed. When none are given, the program
-works in patch extraction mode. Mode summary:
-
-#  mode                           arg1     arg2
-------------------------------------------------
-1  patch extraction               extract  -
-2  patch extraction + training    extract  train
-3  training existing patches      load     train
-
-**Developer notes.** Programmatic pipeline definitions are in `defaults.py`
-
-
-TO-DO: what about adding command line shortcuts for pipelines?
-
-
-Patch extraction
-----------------
-
-Just run:
-
-    $ bin/cnn [OPTIONS]
-
-
-Network training
-----------------
-
-
-Extract patches and train:
-
-    $ bin/cnn [OPTIONS] train
-
-
-Load patches and train:
-
-    $ bin/cnn [OPTIONS] load train
-
-
-Program output
-==============
-
-Results are stored in a directory whose root path is set (see L<Configuration>) by option
-
-  settings => results_dir/
-
-
-Configuration File
-==================
-
-The default configuration file is 'config.cfg'. It can be overridden by the
-ENV variable 'PROCESS_UC1__CONFIG_FILE'. So. f.i., one would call the program:
-
-    $ PROCESS_UC1__CONFIG_FILE=path/to/my/config.ini bin/cnn ...
-
-See 'etc/config.ini' for a description of the available options (TO-DO). Mind
-that some of them can be overridden on the command line, notably:
-
-    gpu-id => GPU
-
-
-To-Do
-=====
-
-...many things ;-)
-
-'''
 ################################################################################
 # init
 ################################################################################
@@ -191,6 +168,12 @@ parser.add_argument(
     nargs='+',
     choices=('extract', 'load', 'train'),
     help='2-step pipeline'
+)
+parser.add_argument(
+    '-d', '--documentation',
+    dest='documentation',
+    action='store_true',
+    help='Print the full documentation'
 )
 parser.add_argument(
     '-w', '--window',
@@ -256,6 +239,10 @@ parser.add_argument(
 # easier with a dict
 args = vars(parser.parse_args())
 
+if args['documentation']:
+    print(__doc__)
+    sys.exit(0)
+
 # Config file is parsed _once_ for ever. All options are now stored in a dict
 # (same structure as for `defaults::def_config`)
 config = parseConfig(args['config_file'], def_config)
@@ -315,7 +302,7 @@ for step in args['pipeline']:
         )
     except Exception as e:
         logger.debug(traceback.format_exc())
-        sys.exit('[cnn] {}: pipeline step failed: {} '.format(step, e))
+        sys.exit('[cnn] {}: pipeline step failed: {}\n'.format(step, e))
 
 
 sys.exit(0)

@@ -1,3 +1,18 @@
+# -*- coding: utf-8 -*-
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+"""Camelyon17 dataset family driver
+
+Meta
+====
+
+:Authors:
+    Mara Graziani et al.
+    Marco E. Poleggi L<mailto:marco-emilio.poleggi -AT- hesge.ch>
+"""
 import os, glob, re, errno
 from functions import preprocess, get_morp_im
 import numpy as np
@@ -238,15 +253,6 @@ class Dataset(object):
         return self.centres[cid]
 
 
-    def count_annotation_files(self):
-        raise RuntimeError, 'Obsoleted by `get_patients()`'
-
-        files_counter = 0
-        for centre in self.centres:
-            annotation_list = self.get_annotation_list(centre)
-            files_counter += len(annotation_list)
-        return files_counter
-
     def get_patients(self, centre):
         """Get a patient dict from dataset representation for `centre` (CID).
 
@@ -256,41 +262,6 @@ class Dataset(object):
         """
         return self.dataset[centre]['patients']
 
-    def get_annotation_list(self, centre):
-        """Get an XML annotation file list for `centre` (CID).
-
-        **Obsoleted by `get_patients()`**
-
-        :param int centre: centre ID
-
-        :return list: a list of
-        """
-        raise RuntimeError, 'Obsoleted by `get_patients()`'
-
-        xml_source_fld = self.xml_source_fld
-        xml_of_selected_centre = []
-        xml_list = os.listdir(xml_source_fld)
-        for x in xml_list:
-            self.logger.debug('[datasets] XML file: {}'.format(x))
-            identifier = x[-13]
-            if centre == 0:
-                if int(identifier)<=1:
-                    xml_of_selected_centre.append(x)
-            elif centre == 1:
-                if int(identifier) == 2 or int(identifier) == 3:
-                    xml_of_selected_centre.append(x)
-            elif centre == 2:
-                if int(identifier) == 4 or int(identifier) == 5:
-                    xml_of_selected_centre.append(x)
-            elif centre == 3:
-                if int(identifier) == 6 or int(identifier) == 7:
-                    xml_of_selected_centre.append(x)
-            elif centre == 4:
-                if int(identifier) == 8 or int(identifier) == 9:
-                    xml_of_selected_centre.append(x)
-
-        self.logger.debug('[datasets] xml_of_selected_centre: {}'.format(xml_of_selected_centre))
-        return np.sort(xml_of_selected_centre)
 
     def get_wsi_path(self, centre, patient):
         """Get the WSI path for a patient of a centre.
@@ -805,3 +776,7 @@ class Dataset(object):
     def __exit__(self, exc_type, exc_value, traceback):
         # self._h5db.close()
         pass
+
+################################################################################
+if __name__ == '__main__':
+    print(__doc__)
