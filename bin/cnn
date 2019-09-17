@@ -1,0 +1,308 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8; mode: python -*-
+################################################################################
+# cnn: EnhanceR PROCESS UC1
+################################################################################
+# For copyright see the `LICENSE` file.
+#
+# This file is part of PROCESS_UC1.
+################################################################################
+"""
+cnn -- EnhanceR PROCESS_UC1 launch script
+
+Usage
+=====
+
+    $ cnn [OPTIONS] [STEP1 [STEP2...]]
+
+
+Options
+-------
+
+Legend: <type>(<default value>)
+
+    --documentation, -d
+        <flag>. Print (this) extended program documentation. Warning! The
+        :ref:`README.md` might be more up-to-date
+
+    --config-file, -c CONFIG_FILE
+        <str>(see :ref:`defaults.CONFIG_FILE`). Configuration file
+
+    --gpu-id, -g N
+        <int>(0). GPU ID to use; must be >= 0. Currently *unused*!
+
+    --log-level, -l LEVEL
+        <str>('info'). Logging level (notset, debug, info, warn, error, critical)
+
+    --method, -m METHOD
+        <str>('random'). Sampling method (random, linear)
+
+    --patients, -p PATIENT...
+        <list>([]). A space-separated list of patient cases. It must be a subset
+        of the whole datasets; each item must match the regex
+        `config['camelyon17'] => 'patient_name_regex'`
+
+    --results-dir, -r  RESULTS-DIR
+        <str>('results'). Path to the results dir. Overrides
+        `config[settings][results_dir]`
+
+    --seed, -s S
+        <int>({OS default}). Random seed
+
+    --window, -w MIN% MAX%
+        <int>(). Nonzero point index window in [0, 100]). This will limit the
+        sampling to the %range [MIN, MAX) of all available indices
+
+
+Pipeline
+========
+
+For now only two pipeline steps are allowed and at least one is mandatory. Here is the
+valid step sequences (or pipelines):
+
+    #  pipeline                        step1    step2
+    -------------------------------------------------
+    1   patch extraction               extract
+    2   patch extraction + training    extract  train
+    3   training existing patches      load     train
+
+**Development status** For now only the `extract` step is working in a
+sequential random sampling fashion, i.e., patches are sequentially extracted
+over a uniform distribution of image (WSI) points. The remaining steps are
+implemented but not tested with the latest refactored code.
+
+
+High resolution patch extraction
+--------------------------------
+
+Just run:
+
+    $ cnn [OPTIONS] extract
+
+See :ref:`README.md` for more details.
+
+
+See also
+========
+
+:ref:`defaults.py` for all configuration options.
+
+
+To-Do
+=====
+
+...many things ;-)
+
+"""
+# kludge, waiting for proper packaging...
+import sys, argparse
+sys.path += ['lib/python2.7/', '../lib/python2.7/']
+from defaults import (
+    HAS_SKIMAGE_VIEW,
+    HAS_TENSORFLOW,
+    CONFIG_FILE,
+    def_config,
+    time_stamp
+)
+
+import pprint as pp
+
+# system deps
+import matplotlib
+# *must* stay here, before downstream imports of matplotlib.pyplot
+matplotlib.use('agg')
+
+import os, traceback, errno, random
+from os import listdir
+from os.path import join, isfile, exists, splitext
+from random import shuffle
+import cv2
+import numpy as np
+from PIL import Image
+from skimage.transform.integral import integral_image, integrate
+if HAS_SKIMAGE_VIEW:
+    from skimage.viewer import ImageViewer
+    # import skimage
+    from skimage import io
+if HAS_TENSORFLOW:
+    from keras import backend as K
+    from keras.models import Sequential
+    from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D
+    import tensorflow as tf
+    import tflearn
+    from tflearn.data_utils import shuffle, to_categorical
+    from tflearn.layers.core import input_data, dropout, fully_connected
+    from tflearn.layers.conv import conv_2d, max_pool_2d
+    from tflearn.layers.estimator import regression
+    import horovod.keras as hvd
+
+import h5py as hd
+import shutil
+import math
+################################################################################
+# package deps
+from functions import (
+    debug,
+    logger,
+    parseConfig,
+    validate_non_neg_int,
+    validate_percent_int,
+    validate_pipeline,
+    log_init,
+)
+from pipeline import extract, load, train
+from extract_xml import *
+if HAS_TENSORFLOW:
+    from models import *
+
+################################################################################
+# init
+################################################################################
+
+# command line options override default and config file's ones
+parser = argparse.ArgumentParser(description='EnhanceR PROCESS_UC1 master script.')
+parser.add_argument(
+    'pipeline',
+    # metavar='STEP', # no metavar, else choices won't be proposed on -h
+    type=str, # pipeline composition is validated downstream
+    nargs='+',
+    choices=('extract', 'load', 'train'),
+    help='2-step pipeline'
+)
+parser.add_argument(
+    '-d', '--documentation',
+    dest='documentation',
+    action='store_true',
+    help='Print the full documentation'
+)
+parser.add_argument(
+    '-w', '--window',
+    metavar='CUR',
+    dest='window',
+    nargs=2,
+    type=validate_percent_int,
+    help='nonzero point index window (range MIN MAX)'
+)
+parser.add_argument(
+    '-c', '--config-file',
+    dest='config_file',
+    type=str,
+    default=CONFIG_FILE,
+    help='configuration file. Default: see `defaults.CONFIG_FILE`'
+)
+parser.add_argument(
+    '-g', '--gpu-id',
+    dest='gpu_id',
+    type=validate_non_neg_int,
+    # default=0, # default from config['GPU']
+    help='GPU ID to use'
+)
+parser.add_argument(
+    '-l', '--log-level',
+    dest='log_level',
+    # metavar='LEVEL', # no metavar, else choices won't be proposed on -h
+    default='info',
+    type=str, # validated downstream
+    choices=('notset', 'debug', 'info', 'warn', 'error', 'critical'),
+    help='logging level'
+)
+parser.add_argument(
+    '-m', '--method',
+    dest='method',
+    default='random',
+    type=str, # validated downstream
+    choices=('random', 'linear'),
+    help='sampling method'
+)
+parser.add_argument(
+    '-s', '--seed',
+    dest='seed',
+    type=int,
+    default=0,
+    help='Random seed'
+)
+parser.add_argument(
+    '-p', '--patients',
+    dest='patients',
+    nargs='+',
+    type=str,
+    help='Patient list. Each item must match `[camelyon17] => patient_name_regex` in config file'
+)
+parser.add_argument(
+    '-r', '--results-dir',
+    dest='results_dir',
+    metavar='RESULTS-DIR',
+    type=str,
+    help='results dir name. Overrides `config[settings][results_dir]`. Default: "results/"'
+)
+
+# easier with a dict
+args = vars(parser.parse_args())
+
+if args['documentation']:
+    print(__doc__)
+    sys.exit(0)
+
+# Config file is parsed _once_ for ever. All options are now stored in a dict
+# (same structure as for `defaults::def_config`)
+config = parseConfig(args['config_file'], def_config)
+
+# settings override, None by args default
+for k in (
+        'gpu_id',
+        'method',
+        'results_dir',
+        'window'
+):
+    if args[k]:
+        config['settings'][k] = args[k]
+
+new_results_dir = os.path.expanduser(config['settings']['results_dir'])
+try:
+    os.makedirs(new_results_dir)
+except OSError as e:
+    if e.errno == errno.EEXIST:
+        pass
+    else:
+        sys.exit('{}: cannot make results dir: {}\n'.format(new_results_dir, e))
+
+logger = log_init(
+    log_level=args['log_level'],
+    log_fname=os.path.join(new_results_dir, 'INFO.log')
+)
+
+shutil.copy2(src=args['config_file'], dst=new_results_dir)
+
+logger.debug(
+    '[cnn] saving configuration file ({}) to results dir: {}'.format(args['config_file'], new_results_dir)
+)
+
+logger.debug('[cnn] config:\n%s\n' % pp.pformat(config))
+logger.debug('[cnn] args:\n%s\n' % pp.pformat(args))
+
+try:
+    validate_pipeline(args['pipeline'])
+except argparse.ArgumentTypeError as e:
+    sys.exit('[error] invalid pipeline definition: {}\n'.format(e))
+
+logger.info('[cnn] Setting random seed: %s' % args['seed'])
+np.random.seed(args['seed'])
+random.seed(args['seed'])
+
+################################################################################
+# pipeline run
+################################################################################
+
+for step in args['pipeline']:
+    logger.info('[cnn] running step: {}'.format(step))
+    try:
+        eval(step)(
+            config, new_results_dir,
+            logger=logger, patients=args['patients'], window=args['window']
+        )
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        sys.exit('[cnn] {}: pipeline step failed: {}\n'.format(step, e))
+
+
+sys.exit(0)
