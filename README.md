@@ -434,3 +434,6 @@ like this:
 Under the hypothesis of infinite resources (i.e., available CPUs), this script
 achieves linear speed-up of `<NUMBER_OF_SLIDES> x <NUMBER_OF_WINDOWS>`. No
 GPGPU is involved.
+
+# Model Interpretability Layer
+see https://github.com/maragraziani/iMIMIC-RCVs.git
