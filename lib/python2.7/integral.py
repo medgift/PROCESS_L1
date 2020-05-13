@@ -270,7 +270,7 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
     x_ln, y_ln = len(x_l), len(y_l)
 
     logger.info('Working mask has {} x {} nonzero points'.format(x_ln, len(y_l)))
-
+    #import pdb; pdb.set_trace()
     if x_ln < level_patch_size * 2:
         logger.info(
             "Not enough nonzero mask points for at least 2 patches ({} < {})".format(
@@ -278,7 +278,6 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
             )
         )
         return [], [], None
-
     # computing the actual level of resolution (dot product)
     x_ws = (np.round(x_l * slide.level_downsamples[slide_level])).astype(int)
     y_ws = (np.round(y_l * slide.level_downsamples[slide_level])).astype(int)
@@ -289,11 +288,12 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
     # while(not bfn['is_batch_over'](cnt, n_samples)):
     while(cnt < n_samples):
         # pick an index...
+        #print "in while n1, counter: ", cnt
         try:
             p_idx = p_iterator.next()
         except StopIteration:
             break
-
+        #print "passed 1st condition"
         # ...corresponding point in the mask
         level_point_x, level_point_y = x_l[p_idx], y_l[p_idx]
         # [BUG] otsu threshold takes also border, so discard?? mmh, needs
@@ -306,7 +306,7 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
             # )
             report['on_border'] += 1
             continue
-
+        #print "past 2nd condition"
         if not is_point_within_boundaries(
                 level_point_x, level_point_y, level_patch_size, mask.shape
         ):
@@ -317,7 +317,7 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
             # )
             report['out_of_boundary'] += 1
             continue
-
+        #print "past 3rd. condition"
         # make patch from mask image
         level_patch_mask = mask[
             int(level_point_x) : int(level_point_x + level_patch_size),
@@ -327,43 +327,59 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
         # apply integral
         ii_map = integral_image(level_patch_mask)
         ii_sum = integrate(ii_map, (0, 0), (level_patch_size - 1, level_patch_size - 1))
-
+        #print "integral applied"
         # total patch area should covers at least x% of the annotation
         # region
         overlap = float(ii_sum) / (level_patch_size**2)
         if overlap < area_overlap:
             continue
-
+        #print "passed 4th condition"
         # square patch (RGB point array in [0, 255])
-        patch = slide.read_region(
-            (y_ws[p_idx], x_ws[p_idx]), 0, (patch_size, patch_size)
-        )
+        patch = slide.read_region((y_ws[p_idx], x_ws[p_idx]), 0, (patch_size, patch_size))
         patch = np.array(patch)
 
+        white_mask = patch[:,:,0:3] > white_level
+        
         if np.sum(patch) == 0:
             report['black_patches'] += 1
             # logger.debug('Skipping black patch at {}, {}'.format(level_point_x, level_point_y))
             continue
-
-        # check almost white RGB values.
-        white_mask = patch[:,:,0:3] > white_level
-        # sum over the 3 RGB channels
+        """ Mara's code    
+        if float(np.sum(white_mask))/(patch_size**2*3) <= white_threshold :
+                #if True:
+                if np.sum(patch)>0:
+                    # adding the patch to the patches list
+                   c
+                   patch_list.append(cv2.cvtColor(patch,cv2.COLOR_RGBA2BGR))
+                    # adding the patch location to the list
+                    patch_point.append((x_l[p_idx],y_l[p_idx]))
+                    cnt += 1 # increasing patch counter
+                else:
+                    print 'This is a black patch!'
+            else:
+                nt_cnt += 1
+        """        
         if float(np.sum(white_mask)) / (patch_size**2*3) <= white_threshold:
-            patch = cv2.cvtColor(patch, cv2.COLOR_RGBA2BGR)
-            if np.mean(patch) > gray_threshold:
-                # got a good one...
+            if np.sum(patch[:,:,0:3])>0:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGBA2BGR)
+                #print np.mean(patch)
                 patch_list.append(patch)
                 # ...with its location
                 patch_point.append((x_l[p_idx], y_l[p_idx]))
                 cnt += 1
             else:
-                report['gray_patches'] += 1
+                report['black_patches'] += 1
+                if report['black_patches']>2000:
+                    print "Annotation mask is faulty. No more tumor patches will be extracted for this file."
+                    break
                 # logger.debug('Skipping grey patch at {}, {}'.format(x_l[p_idx], y_l[p_idx]))
         else:
             # bad one: too white
             report['white_patches'] += 1
+            if report['white_patches']>2000:
+                print "Annotation mask is faulty. No more tumor patches will be extracted for this file."
             nt_cnt += 1
-
+        #print "passed 6th"
         # possibly get an update
         nt_cnt, white_threshold = bfn['get_white_threshold'](
             nt_cnt, bad_batch_size, white_threshold, white_threshold_max, white_threshold_incr
@@ -371,7 +387,8 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
         if white_threshold == None:
             logger.warning('Max white threshold reached! Bailing out')
             break
-
+        #print "passed final"
+        #print report
     # {end while}
 
     logger.info(
@@ -385,7 +402,7 @@ def patch_sampling(slide, mask, nonzerox, nonzeroy, **opts):
         )
     )
     logger.info('Extracted {} patches'.format(len(patch_point)))
-
+    #import pdb; pdb.set_trace()
     # in 'random' method, only one batch is done, so it doens't make sense to
     # return the last index. Instead signal that we're over with sampling.
     p_idx = None if method == 'random' else p_idx

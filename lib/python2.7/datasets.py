@@ -453,7 +453,8 @@ class Dataset(object):
                 normal_im = morp_im - annotations_mask  # np.min(normal_im) := -1.0
                 normal_im = normal_im == 1.0
                 normal_im = (normal_im).astype(int)
-
+                # fimport pdb; pdb.set_trace()
+                
                 # masks are the same for any sample batch ;-)
                 # [TO-DO] make switchable from config/CL
                 plt.figure()
