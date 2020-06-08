@@ -1,4 +1,4 @@
-# PROCESS Initial Architectures
+# Layer 1 of PROCESS Use Case 1 application
 
 This repository contains the first Use Case Application for UC#1 of the
 PROCESS project, http://www.process-project.eu/.
